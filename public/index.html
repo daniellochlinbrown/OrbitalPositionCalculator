@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Orbital Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="badge">OT</div>
+            <div class="titles">
+                <h1>Orbital Tracker</h1>
+                <span class="subtitle">Aerospace Ops Console</span>
+            </div>
+        </div>
+        <nav class="nav">
+            <button class="navbtn" data-section="dashboard">Dashboard</button>
+            <button class="navbtn" data-section="simulate">Simulation</button>
+            <button class="navbtn" data-section="passes">Passes</button>
+            <button class="navbtn" data-section="settings">Settings</button>
+        </nav>
+    </header>
+
+    <main class="wrap">
+        <!-- DASHBOARD -->
+        <section id="dashboard" class="section active">
+            <div class="grid">
+                <div class="card">
+                    <h2>Quick Start</h2>
+                    <p>Pick a satellite and enter your observer location. We’ll add the heavy lifting later.</p>
+                    <div class="row">
+                        <div class="field">
+                            <label>Satellite NORAD ID</label>
+                            <input id="satid" placeholder="e.g. 25544 (ISS)" value="25544" />
+                        </div>
+                        <div class="field">
+                            <label>Observer Lat</label>
+                            <input id="lat" placeholder="-27.47" value="-27.47" />
+                        </div>
+                        <div class="field">
+                            <label>Observer Lon</label>
+                            <input id="lon" placeholder="153.03" value="153.03" />
+                        </div>
+                        <div class="field">
+                            <label>Observer Alt (m)</label>
+                            <input id="alt" placeholder="0" value="0" />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <button class="primary" id="btn-dry-run">UI Dry Run</button>
+                        <button class="ghost" id="btn-clear">Clear Output</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>Status</h2>
+                    <div id="status" class="status">Idle</div>
+                    <pre id="out" class="out">// output will appear here</pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- SIMULATION (placeholder for now) -->
+        <section id="simulate" class="section">
+            <div class="card">
+                <h2>Orbit Simulation (Coming Soon)</h2>
+                <p>We’ll run CPU-intensive propagation here and animate the result.</p>
+                <div class="row">
+                    <div class="field">
+                        <label>Duration (sec)</label>
+                        <input id="sim-duration" value="600" />
+                    </div>
+                    <div class="field">
+                        <label>Step (sec)</label>
+                        <input id="sim-step" value="2" />
+                    </div>
+                </div>
+                <button class="primary" id="btn-simulate-disabled" disabled>Simulate (disabled)</button>
+                <small class="muted">We’ll enable this after backend wiring.</small>
+            </div>
+        </section>
+
+        <!-- PASSES (placeholder) -->
+        <section id="passes" class="section">
+            <div class="card">
+                <h2>Pass Predictions (Coming Soon)</h2>
+                <p>Buttons will call <code>/visualpasses</code> and <code>/radiopasses</code> once available.</p>
+                <div class="row">
+                    <button class="ghost" disabled>Get Visual Passes</button>
+                    <button class="ghost" disabled>Get Radio Passes</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- SETTINGS -->
+        <section id="settings" class="section">
+            <div class="card">
+                <h2>Settings</h2>
+                <div class="field">
+                    <label>Theme</label>
+                    <select id="themeSelect">
+                        <option value="dark" selected>Dark (Aerospace)</option>
+                        <option value="light">Light</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Units</label>
+                    <select id="unitSelect">
+                        <option value="metric" selected>Metric (km / m)</option>
+                        <option value="imperial">Imperial (mi / ft)</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="foot">
+        <span>© Orbital Tracker</span>
+        <span class="dot"></span>
+        <span class="muted">Prototype UI</span>
+    </footer>
+
+    <div id="sidebar"
+        style="position:fixed; left:0; top:0; bottom:0; width:200px; background:#111; color:#fff; padding:10px; overflow-y:auto;">
+        <h3>Satellites</h3>
+        <ul id="satList" style="list-style:none; padding:0; margin:0;">
+            <!-- Will be populated by JS -->
+        </ul>
+    </div>
+
+    <div style="margin-left:220px; padding:10px;">
+        <!-- Your existing content / forms go here -->
+    </div>
+
+    <script src="./app.js"></script>
+</body>
+
+</html>

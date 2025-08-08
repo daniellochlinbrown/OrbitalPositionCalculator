@@ -13,8 +13,11 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.13",
     "dotenv": "^17.2.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "satellite.js": "^6.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"
