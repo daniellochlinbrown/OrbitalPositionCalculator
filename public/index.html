@@ -11,6 +11,13 @@
 </head>
 
 <body>
+
+    <!-- Sidebar first -->
+    <aside class="sidebar">
+        <div class="side-head">Common Satellites</div>
+        <ul id="satList" class="sat-list"></ul>
+    </aside>
+
     <header class="topbar">
         <div class="brand">
             <div class="badge">OT</div>
@@ -66,27 +73,34 @@
             </div>
         </section>
 
-        <!-- SIMULATION (placeholder for now) -->
+        <!-- SIMULATION -->
         <section id="simulate" class="section">
             <div class="card">
-                <h2>Orbit Simulation (Coming Soon)</h2>
-                <p>We’ll run CPU-intensive propagation here and animate the result.</p>
+                <h2>Orbit Simulation</h2>
+                <p>Run a short CPU-heavy propagation for a selected satellite.</p>
                 <div class="row">
+                    <div class="field">
+                        <label>Satellite NORAD ID</label>
+                        <input id="sim-satid" placeholder="e.g. 25544 (ISS)" />
+                    </div>
                     <div class="field">
                         <label>Duration (sec)</label>
                         <input id="sim-duration" value="600" />
                     </div>
                     <div class="field">
                         <label>Step (sec)</label>
-                        <input id="sim-step" value="2" />
+                        <input id="sim-step" value="1" />
                     </div>
                 </div>
-                <button class="primary" id="btn-simulate-disabled" disabled>Simulate (disabled)</button>
-                <small class="muted">We’ll enable this after backend wiring.</small>
+                <button class="primary" id="btn-simulate">Simulate</button>
+                <div id="globeWrap"
+                    style="height: 480px; margin-top: 12px; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden;">
+                </div>
+                <small class="muted">Tip: leave Satellite empty to use the Dashboard’s “Satellite NORAD ID”.</small>
             </div>
         </section>
 
-        <!-- PASSES (placeholder) -->
+        <!-- PASSES -->
         <section id="passes" class="section">
             <div class="card">
                 <h2>Pass Predictions (Coming Soon)</h2>
@@ -126,17 +140,25 @@
         <span class="muted">Prototype UI</span>
     </footer>
 
-    <div id="sidebar"
-        style="position:fixed; left:0; top:0; bottom:0; width:200px; background:#111; color:#fff; padding:10px; overflow-y:auto;">
-        <h3>Satellites</h3>
-        <ul id="satList" style="list-style:none; padding:0; margin:0;">
-            <!-- Will be populated by JS -->
-        </ul>
-    </div>
 
-    <div style="margin-left:220px; padding:10px;">
-        <!-- Your existing content / forms go here -->
-    </div>
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+    <script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+    <script type="module">
+        import * as THREE from "three";
+        import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+        window.THREE = THREE;
+        window.OrbitControls = OrbitControls;
+    </script>
+
 
     <script src="./app.js"></script>
 </body>

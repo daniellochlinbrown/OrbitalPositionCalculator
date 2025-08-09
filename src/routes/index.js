@@ -1,13 +1,13 @@
 const express = require('express');
-const positionsRoute = require('./positions');
-const passesRoute = require('./passes');
-const orbitsRoute = require('./orbits');
+const health = require('./health');
+const tle = require('./tle');
+const orbits = require('./orbits');
 
 const router = express.Router();
 
-router.use('/positions', positionsRoute);
-router.use('/', passesRoute);
-router.use('/orbits', orbitsRoute);
+router.use('/', health);
+router.use('/', tle);
+router.use('/', orbits);
 
 router.get('/', (_req, res) => res.send('Orbital Position API is running.'));
 

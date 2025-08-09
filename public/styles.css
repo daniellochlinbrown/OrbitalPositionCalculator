@@ -219,3 +219,83 @@ select:focus {
     color: var(--muted);
     font-size: 12px;
 }
+
+/* Sidebar */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 220px;
+    background: #0b1020;
+    border-right: 1px solid var(--border);
+    padding: 12px;
+    overflow-y: auto;
+    z-index: 200;
+}
+
+.side-head {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--accent);
+}
+
+.sat-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.sat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+}
+
+.sat-item .name {
+    cursor: pointer;
+}
+
+.sat-item .name:hover {
+    color: var(--accent);
+}
+
+.sat-item .mini {
+    display: inline-flex;
+    gap: 6px;
+}
+
+.mini-btn {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.mini-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Push the rest of the UI to the right of the sidebar */
+.topbar {
+    padding-left: 236px;
+}
+
+.wrap {
+    margin-left: 236px;
+}
+
+.foot {
+    margin-left: 236px;
+}

@@ -27,7 +27,7 @@ async function fetchJSON(url, opts) {
   return data;
 }
 
-// --------- existing route callers (kept) ----------
+// --------- API callers ----------
 async function callPositions() {
   try {
     setStatus("Fetching /positions …");
@@ -93,27 +93,56 @@ async function callAbove() {
   } catch (e) { setStatus(e.message); show({ error: e.message }); }
 }
 
-async function callSimulate() {
+async function callNow(satid) {
   try {
-    setStatus("Simulating orbit …");
-    const body = {
-      satid: q("sim-satid") || undefined,
-      tle1: q("sim-tle1") || undefined,
-      tle2: q("sim-tle2") || undefined,
-      startUtc: q("sim-start") || undefined,
-      durationSec: Number(q("sim-duration") || 120),
-      stepSec: Number(q("sim-step") || 2),
-    };
-    const data = await fetchJSON(API("/orbits/simulate"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
+    setStatus(`Fetching /now/${satid} …`);
+    const data = await fetchJSON(API(`/now/${satid}`));
     show(data);
     setStatus("Done");
   } catch (e) { setStatus(e.message); show({ error: e.message }); }
 }
 
+// --------- Simulation (shared) ----------
+function getSimSatId() {
+  const simId  = document.getElementById("sim-satid")?.value?.trim();
+  const dashId = document.getElementById("satid")?.value?.trim();
+  return simId || dashId || "";
+}
+
+async function callSimulateQuick(satid, durationSec = 600, stepSec = 1) {
+  try {
+    if (!satid) throw new Error("satid is required (fill Simulation or Dashboard Satellite field)");
+    setStatus(`Simulating ${durationSec}s @${stepSec}s for ${satid} …`);
+    console.log("[simulate] POST /simulate", { satid, durationSec, stepSec });
+
+    const data = await fetchJSON(API(`/simulate`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ satid, durationSec, stepSec })
+    });
+
+    console.log("[simulate] response", data);
+    show(data);
+    if (data?.points?.length) {
+      drawOrbit(data);
+    }
+    setStatus("Done");
+  } catch (e) {
+    console.error("[simulate] error", e);
+    setStatus(e.message);
+    show({ error: e.message });
+  }
+}
+
+async function onSimulateClick() {
+  const satid       = getSimSatId();
+  const durationSec = Number(document.getElementById("sim-duration")?.value || 600);
+  const stepSec     = Number(document.getElementById("sim-step")?.value || 1);
+  console.log("[simulate] click", { satid, durationSec, stepSec });
+  await callSimulateQuick(satid, durationSec, stepSec);
+}
+
+// --------- Sidebar satellites ----------
 const satellites = [
   { name: "ISS (ZARYA)", id: 25544 },
   { name: "Hubble Space Telescope", id: 20580 },
@@ -124,38 +153,341 @@ const satellites = [
   { name: "Sentinel-2A", id: 40697 },
 ];
 
-function populateSatelliteList() {
-  const satList = document.getElementById("satList");
-  satellites.forEach(sat => {
-    const li = document.createElement("li");
-    li.textContent = `${sat.name} (${sat.id})`;
-    li.style.cursor = "pointer";
-    li.style.padding = "5px 0";
-    li.addEventListener("click", () => {
-      const satidInput = document.getElementById("pos-satid");
-      if (satidInput) {
-        satidInput.value = sat.id;
-      }
-    });
-    satList.appendChild(li);
+function fillSatInputs(id) {
+  ["satid","pos-satid","vis-satid","rad-satid","sim-satid"].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) el.value = id;
   });
 }
 
-document.addEventListener("DOMContentLoaded", populateSatelliteList);
+function renderSidebar() {
+  const ul = document.getElementById("satList");
+  if (!ul) return;
 
+  ul.innerHTML = "";
+  satellites.forEach(s => {
+    const li = document.createElement("li");
+    li.className = "sat-item";
 
-// --------- simple UI wiring (from our clean frontend) ----------
-function switchSection(name) {
-  $$(".section").forEach(s => s.classList.remove("active"));
-  const target = document.getElementById(name);
-  if (target) target.classList.add("active");
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = `${s.name} (${s.id})`;
+    name.title = "Click to fetch current position";
+    name.addEventListener("click", async () => {
+      fillSatInputs(s.id);
+      await callNow(s.id);
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "mini";
+
+    const simBtn = document.createElement("button");
+    simBtn.className = "mini-btn";
+    simBtn.textContent = "Sim 10m";
+    simBtn.title = "Simulate 10 minutes @ 1s";
+    simBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      fillSatInputs(s.id);
+      await callSimulateQuick(s.id); // 600s @ 1s
+    });
+
+    actions.appendChild(simBtn);
+    li.appendChild(name);
+    li.appendChild(actions);
+    ul.appendChild(li);
+  });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  // Top nav (if present)
-  $$(".navbtn").forEach(btn => btn.addEventListener("click", () => switchSection(btn.dataset.section)));
+// --------- Sections / Nav ----------
+function switchSection(name) {
+  document.querySelectorAll(".section").forEach(sec => {
+    sec.classList.toggle("active", sec.id === name);
+  });
+  document.querySelectorAll(".navbtn").forEach(b => {
+    b.classList.toggle("active", b.dataset.section === name);
+  });
+}
 
-  // Simple UI buttons
+// Fallback mouse/touch drag when OrbitControls isn't available
+function enableFallbackDrag(dom) {
+  if (!THREE_SCENE) return;
+  const { earth, orbitGroup } = THREE_SCENE;
+
+  let dragging = false;
+  let lastX = 0, lastY = 0;
+
+  const getXY = (e) => {
+    if (e.touches && e.touches[0]) return [e.touches[0].clientX, e.touches[0].clientY];
+    return [e.clientX, e.clientY];
+  };
+
+  function onDown(e) { dragging = true; [lastX, lastY] = getXY(e); }
+  function onMove(e) {
+    if (!dragging) return;
+    const [x, y] = getXY(e);
+    const dx = (x - lastX) * 0.005;
+    const dy = (y - lastY) * 0.005;
+    lastX = x; lastY = y;
+
+    if (earth) {
+      earth.rotation.y -= dx;
+      earth.rotation.x -= dy;
+    }
+    if (orbitGroup) {
+      orbitGroup.rotation.y -= dx;
+      orbitGroup.rotation.x -= dy;
+    }
+  }
+  function onUp() { dragging = false; }
+
+  dom.addEventListener('mousedown', onDown);
+  dom.addEventListener('mousemove', onMove);
+  dom.addEventListener('mouseup', onUp);
+  dom.addEventListener('mouseleave', onUp);
+
+  dom.addEventListener('touchstart', onDown, { passive: true });
+  dom.addEventListener('touchmove', onMove,   { passive: true });
+  dom.addEventListener('touchend', onUp);
+}
+
+function frameOrbit(object3D) {
+  if (!THREE_SCENE) return;
+  const { camera, controls } = THREE_SCENE;
+
+  const box = new THREE.Box3().setFromObject(object3D);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+
+  const fitOffset = 1.8;
+  const maxSize = Math.max(size.x, size.y, size.z);
+  const fov = (camera.fov * Math.PI) / 180;
+  let distance = (maxSize / 2) / Math.tan(fov / 2) * fitOffset;
+  distance = Math.min(Math.max(distance, 2.5), 8);
+
+  const dir = new THREE.Vector3(1, 0.6, 1).normalize();
+  const targetPos = center.clone().add(dir.multiplyScalar(distance));
+  camera.position.copy(targetPos);
+
+  if (controls && controls.target) {
+    controls.target.copy(center);
+    controls.update();
+  } else {
+    camera.lookAt(center);
+  }
+}
+
+
+
+// ---------- 3D Globe (Three.js) ----------
+let THREE_SCENE = null;
+
+function initGlobe() {
+  const mount = document.getElementById("globeWrap");
+  if (!mount || THREE_SCENE) return; 
+
+  const width = mount.clientWidth;
+  const height = mount.clientHeight;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f17);
+
+  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
+  camera.position.set(0, 0, 4.0);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  mount.appendChild(renderer.domElement);
+
+  // Controls (via shim or fallback)
+  const ControlsCtor =
+    (window.THREE && THREE.OrbitControls) ||
+    (window.OrbitControls ? window.OrbitControls : null);
+
+  let controls = null;
+  if (ControlsCtor) {
+    controls = new ControlsCtor(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controls.minDistance = 1.6;
+    controls.maxDistance = 8;
+    controls.target.set(0, 0, 0);
+    controls.update();
+  } else {
+    console.warn("OrbitControls not found; enabling fallback drag");
+    enableFallbackDrag(renderer.domElement);
+  }
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+  dir.position.set(5, 3, 5);
+  scene.add(dir);
+
+  // Earth
+  const R = 1.0;
+  const earthGeo = new THREE.SphereGeometry(R, 64, 64);
+  const earthMat = new THREE.MeshPhongMaterial({
+    map: new THREE.TextureLoader().load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg"),
+    specular: 0x333333,
+    shininess: 5
+  });
+  const earth = new THREE.Mesh(earthGeo, earthMat);
+  scene.add(earth);
+
+  // Atmosphere glow
+  const atmoGeo = new THREE.SphereGeometry(R * 1.02, 64, 64);
+  const atmoMat = new THREE.MeshBasicMaterial({ color: 0x3ab5ff, transparent: true, opacity: 0.08, side: THREE.BackSide });
+  const atmo = new THREE.Mesh(atmoGeo, atmoMat);
+  scene.add(atmo);
+
+  // Groups, satellite marker
+  const orbitGroup = new THREE.Group();
+  const pathGroup  = new THREE.Group();  
+  orbitGroup.add(pathGroup);
+  scene.add(orbitGroup);
+
+  const satGeom = new THREE.SphereGeometry(0.015, 16, 16);
+  const satMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+  const sat = new THREE.Mesh(satGeom, satMat);
+  orbitGroup.add(sat); 
+
+
+
+  // Align prime meridian with our llaToCartesian (texture vs math)
+  earth.rotation.y = -Math.PI / 2;
+  orbitGroup.rotation.y = -Math.PI / 2;
+
+  // Resize handling
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => {
+      const w = mount.clientWidth, h = mount.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }).observe(mount);
+  } else {
+    window.addEventListener("resize", () => {
+      const w = mount.clientWidth, h = mount.clientHeight;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    });
+  }
+
+  // Smooth animation loop with path interpolation
+  let last = performance.now();
+  function animate() {
+    requestAnimationFrame(animate);
+
+    const now = performance.now();
+    const dtMs = now - last;
+    last = now;
+
+    // Move satellite smoothly along the current path (if any)
+    if (THREE_SCENE && THREE_SCENE.path) {
+      const p = THREE_SCENE.path;
+      const speed = 1.0; // playback speed (1x time of your sim)
+      p.acc += (dtMs / 1000) * speed;
+
+      while (p.acc >= p.dt) {
+        p.acc -= p.dt;
+        p.i = (p.i + 1) % (p.positions.length - 1);
+      }
+
+      const a = p.positions[p.i];
+      const b = p.positions[(p.i + 1) % p.positions.length];
+      const alpha = p.dt > 0 ? (p.acc / p.dt) : 0;
+      sat.position.lerpVectors(a, b, alpha);
+    }
+
+    if (controls && typeof controls.update === "function") controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  THREE_SCENE = { scene, camera, renderer, controls, earth, atmo, orbitGroup, pathGroup, sat, R, framedOnce: false, path: null };
+}
+
+
+/**
+ * Convert lat/lon/alt(km) to Cartesian in our scene
+ * Earth radius ~ 6371 km -> we map to R=1.0 units => scale = 1 / 6371
+ */
+function llaToCartesian(latDeg, lonDeg, altKm, R) {
+  const lat = (latDeg * Math.PI) / 180;
+  const lon = (lonDeg * Math.PI) / 180;
+  const Re = 6371; // km
+  const scale = R / Re;
+  const r = (Re + (altKm || 0)) * scale;
+  const x = r * Math.cos(lat) * Math.cos(lon);
+  const y = r * Math.sin(lat);
+  const z = r * Math.cos(lat) * Math.sin(lon);
+  return new THREE.Vector3(x, y, z);
+}
+
+/**
+ * Draw an orbit line + move satellite along it over time
+ * sim: { info, points:[{t, lla:{lat,lon,alt}}...] }
+ */
+function drawOrbit(sim) {
+  if (!THREE_SCENE) initGlobe();
+
+  const { pathGroup, orbitGroup, sat, R } = THREE_SCENE;
+  pathGroup.clear();  
+
+  const pts = sim.points || [];
+  if (pts.length < 2) { setStatus("Not enough points to draw."); return; }
+
+  const positions = pts.map(p => llaToCartesian(p.lla.lat, p.lla.lon, p.lla.alt, R));
+
+  // Orbit line into pathGroup
+  const geom = new THREE.BufferGeometry().setFromPoints(positions);
+  const mat  = new THREE.LineBasicMaterial({ linewidth: 2 });
+  const line = new THREE.Line(geom, mat);
+  pathGroup.add(line);
+
+  // Place satellite on the path start
+  sat.position.copy(positions[0]);
+
+  // Interpolated animation path 
+  const dt = Math.max(1, ((pts[1]?.t ?? (pts[0].t + 1)) - pts[0].t));
+  THREE_SCENE.path = { positions, dt, i: 0, acc: 0 };
+
+  // Frame only on first draw
+  if (!THREE_SCENE.framedOnce) {
+    frameOrbit(line);
+    THREE_SCENE.framedOnce = true;
+  }
+
+  setStatus(`Orbit drawn: ${positions.length} points`);
+}
+
+
+
+
+// --------- DOM Ready ----------
+document.addEventListener("DOMContentLoaded", () => {
+  renderSidebar();
+
+  // Nav buttons
+  $$(".navbtn").forEach(btn =>
+    btn.addEventListener("click", () => switchSection(btn.dataset.section))
+  );
+
+  // Simulation button
+  const simBtn = document.getElementById("btn-simulate");
+  if (!simBtn) {
+    console.warn("[simulate] btn-simulate not found");
+  } else {
+    simBtn.addEventListener("click", onSimulateClick);
+    console.log("[simulate] bound");
+  }
+
+  // Dashboard buttons
   const dry = $("#btn-dry-run");
   if (dry) dry.addEventListener("click", () => {
     const satid = $("#satid")?.value?.trim() || "";
@@ -172,10 +504,9 @@ document.addEventListener("DOMContentLoaded", () => {
     show("// output will appear here");
   });
 
-  // API tester buttons (only bind if those controls exist on the page)
-  $("#btn-positions")     && $("#btn-positions").addEventListener("click", callPositions);
-  $("#btn-visualpasses")  && $("#btn-visualpasses").addEventListener("click", callVisualPasses);
-  $("#btn-radiopasses")   && $("#btn-radiopasses").addEventListener("click", callRadioPasses);
-  $("#btn-above")         && $("#btn-above").addEventListener("click", callAbove);
-  $("#btn-simulate")      && $("#btn-simulate").addEventListener("click", callSimulate);
+
+  $("#btn-positions")    && $("#btn-positions").addEventListener("click", callPositions);
+  $("#btn-visualpasses") && $("#btn-visualpasses").addEventListener("click", callVisualPasses);
+  $("#btn-radiopasses")  && $("#btn-radiopasses").addEventListener("click", callRadioPasses);
+  $("#btn-above")        && $("#btn-above").addEventListener("click", callAbove);
 });
