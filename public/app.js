@@ -27,6 +27,33 @@ async function fetchJSON(url, opts) {
   return data;
 }
 
+function addMarker(latDeg, lonDeg, altKm, color = 0xffcc00) {
+  if (!THREE_SCENE) return;
+  const { orbitGroup, R } = THREE_SCENE;
+
+  // Position
+  const pos = llaToCartesian(latDeg, lonDeg, altKm || 0, R);
+
+  // Marker sphere
+  const dotGeom = new THREE.SphereGeometry(0.012, 12, 12);
+  const dotMat  = new THREE.MeshBasicMaterial({ color });
+  const dot     = new THREE.Mesh(dotGeom, dotMat);
+  dot.position.copy(pos);
+
+  // A thin line from center to the dot (nice visual cue)
+  const lineGeom = new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(0,0,0), pos ]);
+  const lineMat  = new THREE.LineBasicMaterial({ linewidth: 1, color, transparent: true, opacity: 0.5 });
+  const line     = new THREE.Line(lineGeom, lineMat);
+
+  // Keep these under orbitGroup so they get the same meridian offset
+  orbitGroup.add(line);
+  orbitGroup.add(dot);
+
+  return dot;
+}
+
+
+
 // --------- API callers ----------
 async function callPositions() {
   try {
@@ -354,12 +381,8 @@ function initGlobe() {
   const satMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
   const sat = new THREE.Mesh(satGeom, satMat);
   orbitGroup.add(sat); 
+  orbitGroup.rotation.y = 0;   // was -Math.PI/2
 
-
-
-  // Align prime meridian with our llaToCartesian (texture vs math)
-  earth.rotation.y = -Math.PI / 2;
-  orbitGroup.rotation.y = -Math.PI / 2;
 
   // Resize handling
   if (typeof ResizeObserver !== "undefined") {
@@ -410,22 +433,25 @@ function initGlobe() {
   animate();
 
   THREE_SCENE = { scene, camera, renderer, controls, earth, atmo, orbitGroup, pathGroup, sat, R, framedOnce: false, path: null };
+
 }
 
+// ---- Map offsets (degrees). 
+let MERIDIAN_OFFSET_DEG = 90; 
+let LAT_OFFSET_DEG      = 0;  
 
-/**
- * Convert lat/lon/alt(km) to Cartesian in our scene
- * Earth radius ~ 6371 km -> we map to R=1.0 units => scale = 1 / 6371
- */
 function llaToCartesian(latDeg, lonDeg, altKm, R) {
-  const lat = (latDeg * Math.PI) / 180;
-  const lon = (lonDeg * Math.PI) / 180;
-  const Re = 6371; // km
-  const scale = R / Re;
-  const r = (Re + (altKm || 0)) * scale;
-  const x = r * Math.cos(lat) * Math.cos(lon);
+  const Re = 6371;
+  const r  = (Re + (altKm || 0)) * (R / Re);
+
+  // Apply your chosen offsets
+  const lat = ((latDeg + LAT_OFFSET_DEG) * Math.PI) / 180;
+  const lon = ((lonDeg + MERIDIAN_OFFSET_DEG) * Math.PI) / 180;
+
+  // Z-forward mapping: lon=0 (+offset) -> z=+r
+  const x = r * Math.cos(lat) * Math.sin(lon);
   const y = r * Math.sin(lat);
-  const z = r * Math.cos(lat) * Math.sin(lon);
+  const z = r * Math.cos(lat) * Math.cos(lon);
   return new THREE.Vector3(x, y, z);
 }
 
@@ -467,11 +493,10 @@ function drawOrbit(sim) {
 }
 
 
-
-
 // --------- DOM Ready ----------
 document.addEventListener("DOMContentLoaded", () => {
   renderSidebar();
+  initGlobe();
 
   // Nav buttons
   $$(".navbtn").forEach(btn =>
