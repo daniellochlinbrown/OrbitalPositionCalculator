@@ -1,7 +1,10 @@
-const express = require('express');
-const { getTLE } = require('../controllers/tleController');
+// src/routes/tle.js
+const { Router } = require('express');
+const { getTLERoute } = require('../controllers/tleController');
 
-const router = express.Router();
-router.get('/tle/:satid', getTLE);
+const router = Router();
+
+// GET /tle/25544  -> { satid, line1, line2, cached }
+router.get('/:satid', getTLERoute);
 
 module.exports = router;

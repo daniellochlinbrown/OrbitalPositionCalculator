@@ -26,12 +26,26 @@
                 <span class="subtitle">Aerospace Ops Console</span>
             </div>
         </div>
+
         <nav class="nav">
-            <button class="navbtn" data-section="dashboard">Dashboard</button>
-            <button class="navbtn" data-section="simulate">Simulation</button>
-            <button class="navbtn" data-section="passes">Passes</button>
-            <button class="navbtn" data-section="settings">Settings</button>
+            <button type="button" class="navbtn" data-section="dashboard">Dashboard</button>
+            <button type="button" class="navbtn" data-section="simulate">Simulation</button>
+            <button type="button" class="navbtn" data-section="passes">Passes</button>
+            <button type="button" class="navbtn" data-section="settings">Settings</button>
         </nav>
+
+        <!-- Auth mini-panel -->
+        <div class="auth-panel">
+            <div id="auth-when-logged-out" class="auth-row">
+                <input id="auth-email" class="auth-input" type="email" placeholder="email@example.com" />
+                <input id="auth-password" class="auth-input" type="password" placeholder="password" />
+                <button id="btn-login" class="navbtn">Login</button>
+            </div>
+            <div id="auth-when-logged-in" class="auth-row" style="display:none">
+                <span id="auth-user" class="muted">user@example.com</span>
+                <button id="btn-logout" class="navbtn">Logout</button>
+            </div>
+        </div>
     </header>
 
     <main class="wrap">
@@ -93,45 +107,45 @@
                     </div>
                 </div>
                 <button class="primary" id="btn-simulate">Simulate</button>
+
                 <div id="globeWrap"
                     style="height: 480px; margin-top: 12px; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden;">
                 </div>
                 <small class="muted">Tip: leave Satellite empty to use the Dashboard’s “Satellite NORAD ID”.</small>
             </div>
-        </section>
 
-        <!-- PASSES -->
-        <section id="passes" class="section">
-            <div class="card">
-                <h2>Pass Predictions (Coming Soon)</h2>
-                <p>Buttons will call <code>/visualpasses</code> and <code>/radiopasses</code> once available.</p>
-                <div class="row">
-                    <button class="ghost" disabled>Get Visual Passes</button>
-                    <button class="ghost" disabled>Get Radio Passes</button>
+            <!-- PASSES -->
+            <section id="passes" class="section">
+                <div class="card">
+                    <h2>Pass Predictions (Coming Soon)</h2>
+                    <p>Buttons will call <code>/visualpasses</code> and <code>/radiopasses</code> once available.</p>
+                    <div class="row">
+                        <button class="ghost" disabled>Get Visual Passes</button>
+                        <button class="ghost" disabled>Get Radio Passes</button>
+                    </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <!-- SETTINGS -->
-        <section id="settings" class="section">
-            <div class="card">
-                <h2>Settings</h2>
-                <div class="field">
-                    <label>Theme</label>
-                    <select id="themeSelect">
-                        <option value="dark" selected>Dark (Aerospace)</option>
-                        <option value="light">Light</option>
-                    </select>
+            <!-- SETTINGS -->
+            <section id="settings" class="section">
+                <div class="card">
+                    <h2>Settings</h2>
+                    <div class="field">
+                        <label>Theme</label>
+                        <select id="themeSelect">
+                            <option value="dark" selected>Dark (Aerospace)</option>
+                            <option value="light">Light</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Units</label>
+                        <select id="unitSelect">
+                            <option value="metric" selected>Metric (km / m)</option>
+                            <option value="imperial">Imperial (mi / ft)</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="field">
-                    <label>Units</label>
-                    <select id="unitSelect">
-                        <option value="metric" selected>Metric (km / m)</option>
-                        <option value="imperial">Imperial (mi / ft)</option>
-                    </select>
-                </div>
-            </div>
-        </section>
+            </section>
     </main>
 
     <footer class="foot">
@@ -141,8 +155,8 @@
     </footer>
 
     <script type="importmap">
-        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-    </script>
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
 
     <script type="module">
         import * as THREE from "three";
@@ -151,8 +165,18 @@
         window.OrbitControls = OrbitControls;
     </script>
 
-
     <script src="./app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const preset = document.getElementById('hm-preset');
+            const customWrap = document.getElementById('hm-custom-wrap');
+            if (preset) {
+                preset.addEventListener('change', () => {
+                    customWrap.style.display = preset.value === 'custom' ? '' : 'none';
+                });
+            }
+        });
+    </script>
 </body>
 
 </html>

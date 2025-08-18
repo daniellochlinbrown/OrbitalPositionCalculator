@@ -19,40 +19,82 @@ function q(id) {
 }
 const API = (path) => (path.startsWith("http") ? path : `${path}`);
 
+// Auth
+let ACCESS_TOKEN = ""; 
+function setAccessToken(t) {
+  ACCESS_TOKEN = t || "";
+  const loggedOut = $("#auth-when-logged-out");
+  const loggedIn  = $("#auth-when-logged-in");
+  if (loggedOut && loggedIn) {
+    const on = Boolean(ACCESS_TOKEN);
+    loggedOut.style.display = on ? "none" : "";
+    loggedIn.style.display  = on ? "" : "none";
+  }
+}
+
+async function apiFetch(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  if (ACCESS_TOKEN) headers.set("Authorization", `Bearer ${ACCESS_TOKEN}`);
+  const res = await fetch(url, { ...opts, headers, credentials: "include" });
+
+  if (res.status === 401) {
+    const r = await fetch(API("/auth/refresh"), { method: "POST", credentials: "include" });
+    if (r.ok) {
+      const { accessToken } = await r.json();
+      setAccessToken(accessToken);
+      const retryHeaders = new Headers(opts.headers || {});
+      if (accessToken) retryHeaders.set("Authorization", `Bearer ${accessToken}`);
+      return fetch(url, { ...opts, headers: retryHeaders, credentials: "include" });
+    }
+  }
+  return res;
+}
+
 async function fetchJSON(url, opts) {
-  const res = await fetch(url, opts);
+  const res = await apiFetch(url, opts);
   let data = null;
   try { data = await res.json(); } catch {}
   if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
   return data;
 }
 
+async function login(email, password) {
+  const data = await fetchJSON(API("/auth/login"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    credentials: "include",
+  });
+  setAccessToken(data.accessToken);
+  const u = $("#auth-user");
+  if (u) u.textContent = data?.user?.email || email;
+  return data;
+}
+async function logout() {
+  try { await fetchJSON(API("/auth/logout"), { method: "POST", credentials: "include" }); } catch {}
+  setAccessToken("");
+}
+
+
+// ---------- 3D + markers ----------
 function addMarker(latDeg, lonDeg, altKm, color = 0xffcc00) {
   if (!THREE_SCENE) return;
   const { orbitGroup, R } = THREE_SCENE;
-
-  // Position
   const pos = llaToCartesian(latDeg, lonDeg, altKm || 0, R);
 
-  // Marker sphere
   const dotGeom = new THREE.SphereGeometry(0.012, 12, 12);
   const dotMat  = new THREE.MeshBasicMaterial({ color });
   const dot     = new THREE.Mesh(dotGeom, dotMat);
   dot.position.copy(pos);
 
-  // A thin line from center to the dot (nice visual cue)
   const lineGeom = new THREE.BufferGeometry().setFromPoints([ new THREE.Vector3(0,0,0), pos ]);
   const lineMat  = new THREE.LineBasicMaterial({ linewidth: 1, color, transparent: true, opacity: 0.5 });
   const line     = new THREE.Line(lineGeom, lineMat);
 
-  // Keep these under orbitGroup so they get the same meridian offset
   orbitGroup.add(line);
   orbitGroup.add(dot);
-
   return dot;
 }
-
-
 
 // --------- API callers ----------
 async function callPositions() {
@@ -129,7 +171,7 @@ async function callNow(satid) {
   } catch (e) { setStatus(e.message); show({ error: e.message }); }
 }
 
-// --------- Simulation (shared) ----------
+// --------- Simulation ----------
 function getSimSatId() {
   const simId  = document.getElementById("sim-satid")?.value?.trim();
   const dashId = document.getElementById("satid")?.value?.trim();
@@ -226,16 +268,22 @@ function renderSidebar() {
 }
 
 // --------- Sections / Nav ----------
+$$(".topbar .nav .navbtn").forEach(btn => {
+  const section = btn.dataset.section;
+  if (!section) return;
+  btn.addEventListener("click", () => switchSection(section));
+});
+
 function switchSection(name) {
+  if (!name) return; 
   document.querySelectorAll(".section").forEach(sec => {
     sec.classList.toggle("active", sec.id === name);
   });
-  document.querySelectorAll(".navbtn").forEach(b => {
+  document.querySelectorAll(".topbar .nav .navbtn").forEach(b => {
     b.classList.toggle("active", b.dataset.section === name);
   });
 }
 
-// Fallback mouse/touch drag when OrbitControls isn't available
 function enableFallbackDrag(dom) {
   if (!THREE_SCENE) return;
   const { earth, orbitGroup } = THREE_SCENE;
@@ -305,8 +353,6 @@ function frameOrbit(object3D) {
   }
 }
 
-
-
 // ---------- 3D Globe (Three.js) ----------
 let THREE_SCENE = null;
 
@@ -327,7 +373,6 @@ function initGlobe() {
   renderer.setSize(width, height);
   mount.appendChild(renderer.domElement);
 
-  // Controls (via shim or fallback)
   const ControlsCtor =
     (window.THREE && THREE.OrbitControls) ||
     (window.OrbitControls ? window.OrbitControls : null);
@@ -381,8 +426,7 @@ function initGlobe() {
   const satMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
   const sat = new THREE.Mesh(satGeom, satMat);
   orbitGroup.add(sat); 
-  orbitGroup.rotation.y = 0;   // was -Math.PI/2
-
+  orbitGroup.rotation.y = 0;
 
   // Resize handling
   if (typeof ResizeObserver !== "undefined") {
@@ -401,8 +445,9 @@ function initGlobe() {
     });
   }
 
-  // Smooth animation loop with path interpolation
-  let last = performance.now();
+  THREE_SCENE = { scene, camera, renderer, controls, earth, atmo, orbitGroup, pathGroup, sat, R, framedOnce: false, path: null };
+
+    let last = performance.now();
   function animate() {
     requestAnimationFrame(animate);
 
@@ -410,10 +455,9 @@ function initGlobe() {
     const dtMs = now - last;
     last = now;
 
-    // Move satellite smoothly along the current path (if any)
     if (THREE_SCENE && THREE_SCENE.path) {
       const p = THREE_SCENE.path;
-      const speed = 1.0; // playback speed (1x time of your sim)
+      const speed = 1.0;
       p.acc += (dtMs / 1000) * speed;
 
       while (p.acc >= p.dt) {
@@ -424,31 +468,26 @@ function initGlobe() {
       const a = p.positions[p.i];
       const b = p.positions[(p.i + 1) % p.positions.length];
       const alpha = p.dt > 0 ? (p.acc / p.dt) : 0;
-      sat.position.lerpVectors(a, b, alpha);
+      THREE_SCENE.sat.position.lerpVectors(a, b, alpha);
     }
 
-    if (controls && typeof controls.update === "function") controls.update();
+    if (THREE_SCENE.controls && typeof THREE_SCENE.controls.update === "function") THREE_SCENE.controls.update();
     renderer.render(scene, camera);
   }
   animate();
-
-  THREE_SCENE = { scene, camera, renderer, controls, earth, atmo, orbitGroup, pathGroup, sat, R, framedOnce: false, path: null };
-
 }
 
-// ---- Map offsets (degrees). 
-let MERIDIAN_OFFSET_DEG = 90; 
-let LAT_OFFSET_DEG      = 0;  
+// Map offsets
+let MERIDIAN_OFFSET_DEG = 90;
+let LAT_OFFSET_DEG      = 0;
 
 function llaToCartesian(latDeg, lonDeg, altKm, R) {
   const Re = 6371;
   const r  = (Re + (altKm || 0)) * (R / Re);
 
-  // Apply your chosen offsets
   const lat = ((latDeg + LAT_OFFSET_DEG) * Math.PI) / 180;
   const lon = ((lonDeg + MERIDIAN_OFFSET_DEG) * Math.PI) / 180;
 
-  // Z-forward mapping: lon=0 (+offset) -> z=+r
   const x = r * Math.cos(lat) * Math.sin(lon);
   const y = r * Math.sin(lat);
   const z = r * Math.cos(lat) * Math.cos(lon);
@@ -462,28 +501,24 @@ function llaToCartesian(latDeg, lonDeg, altKm, R) {
 function drawOrbit(sim) {
   if (!THREE_SCENE) initGlobe();
 
-  const { pathGroup, orbitGroup, sat, R } = THREE_SCENE;
-  pathGroup.clear();  
+  const { pathGroup, sat, R } = THREE_SCENE;
+  pathGroup.clear();
 
   const pts = sim.points || [];
   if (pts.length < 2) { setStatus("Not enough points to draw."); return; }
 
   const positions = pts.map(p => llaToCartesian(p.lla.lat, p.lla.lon, p.lla.alt, R));
 
-  // Orbit line into pathGroup
   const geom = new THREE.BufferGeometry().setFromPoints(positions);
   const mat  = new THREE.LineBasicMaterial({ linewidth: 2 });
   const line = new THREE.Line(geom, mat);
   pathGroup.add(line);
 
-  // Place satellite on the path start
   sat.position.copy(positions[0]);
 
-  // Interpolated animation path 
   const dt = Math.max(1, ((pts[1]?.t ?? (pts[0].t + 1)) - pts[0].t));
   THREE_SCENE.path = { positions, dt, i: 0, acc: 0 };
 
-  // Frame only on first draw
   if (!THREE_SCENE.framedOnce) {
     frameOrbit(line);
     THREE_SCENE.framedOnce = true;
@@ -492,29 +527,26 @@ function drawOrbit(sim) {
   setStatus(`Orbit drawn: ${positions.length} points`);
 }
 
-
 // --------- DOM Ready ----------
 document.addEventListener("DOMContentLoaded", () => {
+  const on = (sel, ev, fn, opts) => { const el = $(sel); if (el) el.addEventListener(ev, fn, opts); return !!el; };
+
   renderSidebar();
   initGlobe();
 
-  // Nav buttons
-  $$(".navbtn").forEach(btn =>
-    btn.addEventListener("click", () => switchSection(btn.dataset.section))
-  );
+  // --- NAV ---
+  $$(".topbar .nav .navbtn").forEach(btn => {
+    const section = btn.dataset.section;
+    if (!section) return;
+    btn.addEventListener("click", () => switchSection(section));
+  });
+  switchSection("dashboard");
 
-  // Simulation button
-  const simBtn = document.getElementById("btn-simulate");
-  if (!simBtn) {
-    console.warn("[simulate] btn-simulate not found");
-  } else {
-    simBtn.addEventListener("click", onSimulateClick);
-    console.log("[simulate] bound");
-  }
+  // --- SIMULATION ---
+  on("#btn-simulate", "click", onSimulateClick);
 
-  // Dashboard buttons
-  const dry = $("#btn-dry-run");
-  if (dry) dry.addEventListener("click", () => {
+  // --- DASHBOARD HELPERS ---
+  on("#btn-dry-run", "click", () => {
     const satid = $("#satid")?.value?.trim() || "";
     const lat   = $("#lat")?.value?.trim() || "";
     const lon   = $("#lon")?.value?.trim() || "";
@@ -522,16 +554,58 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatus("Dry run complete (no API calls).");
     show({ message: "Inputs captured.", satid, observer: { lat, lon, alt } });
   });
-
-  const clear = $("#btn-clear");
-  if (clear) clear.addEventListener("click", () => {
+  on("#btn-clear", "click", () => {
     setStatus("Idle");
     show("// output will appear here");
   });
 
+  // --- EXISTING API BINDINGS  ---
+  on("#btn-positions",    "click", callPositions);
+  on("#btn-visualpasses", "click", callVisualPasses);
+  on("#btn-radiopasses",  "click", callRadioPasses);
+  on("#btn-above",        "click", callAbove);
 
-  $("#btn-positions")    && $("#btn-positions").addEventListener("click", callPositions);
-  $("#btn-visualpasses") && $("#btn-visualpasses").addEventListener("click", callVisualPasses);
-  $("#btn-radiopasses")  && $("#btn-radiopasses").addEventListener("click", callRadioPasses);
-  $("#btn-above")        && $("#btn-above").addEventListener("click", callAbove);
+  const preset = $("#hm-preset");
+  const customWrap = $("#hm-custom-wrap");
+  if (preset && customWrap) {
+    preset.addEventListener("change", () => {
+      customWrap.style.display = preset.value === "custom" ? "" : "none";
+    });
+  }
+
+  // --- AUTH PANEL ---
+  const emailEl = $("#auth-email");
+  const passEl  = $("#auth-password");
+
+  on("#btn-login", "click", async () => {
+    try {
+      const email = emailEl?.value?.trim() || "";
+      const password = passEl?.value || "";
+      if (!email || !password) throw new Error("Enter email and password.");
+      setStatus("Logging in …");
+      await login(email, password);
+      setStatus("Logged in.");
+    } catch (e) {
+      setStatus(e.message);
+      show({ error: e.message });
+    }
+  });
+
+  // Press Enter in password field -> login
+  if (passEl) {
+    passEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const btn = $("#btn-login");
+        btn?.click();
+      }
+    });
+  }
+
+  on("#btn-logout", "click", async () => {
+    await logout();
+    setStatus("Logged out.");
+  });
+
+  // --- INITIAL AUTH STATE ---
+  setAccessToken(""); // start logged out
 });
