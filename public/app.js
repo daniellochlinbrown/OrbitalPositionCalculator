@@ -32,6 +32,53 @@ function setAccessToken(t) {
   }
 }
 
+// ----- Register drawer helpers -----
+function openRegisterDrawer(prefillEmail = "") {
+  const ov = $("#reg-overlay"), dr = $("#reg-drawer");
+  if (!ov || !dr) return;
+  if (prefillEmail) $("#reg-email").value = prefillEmail;
+  $("#reg-password").value = "";
+  const err = $("#reg-error"); if (err) { err.style.display = "none"; err.textContent = ""; }
+  ov.hidden = false;
+  dr.hidden = false;
+  requestAnimationFrame(() => dr.setAttribute("open", ""));
+  setTimeout(() => $("#reg-email")?.focus(), 50);
+}
+function closeRegisterDrawer() {
+  const ov = $("#reg-overlay"), dr = $("#reg-drawer");
+  if (!ov || !dr) return;
+  dr.removeAttribute("open");
+  setTimeout(() => { ov.hidden = true; dr.hidden = true; }, 200);
+}
+async function doRegister() {
+  const email = ($("#reg-email")?.value || "").trim().toLowerCase();
+  const password = $("#reg-password")?.value || "";
+  const err = $("#reg-error");
+  const showErr = (msg) => { if (err) { err.textContent = msg; err.style.display = ""; } setStatus(msg); };
+
+  if (!email || !password) return showErr("Enter email and password.");
+  if (password.length < 8) return showErr("Password must be at least 8 characters.");
+
+  try {
+    setStatus("Registering …");
+    const res = await fetch(API("/auth/register"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || `Register failed (${res.status})`);
+    setAccessToken(data.accessToken);
+    const u = $("#auth-user"); if (u) u.textContent = data?.user?.email || email;
+    setStatus("Registered & logged in.");
+    closeRegisterDrawer();
+  } catch (e) {
+    showErr(e.message || "Register failed");
+  }
+}
+
+
 async function apiFetch(url, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (ACCESS_TOKEN) headers.set("Authorization", `Bearer ${ACCESS_TOKEN}`);
@@ -527,6 +574,32 @@ function drawOrbit(sim) {
   setStatus(`Orbit drawn: ${positions.length} points`);
 }
 
+function isRegisterMode() {
+  return !!document.body.dataset.registerMode;
+}
+function setRegisterMode(on) {
+  document.body.dataset.registerMode = on ? '1' : '';
+  const p2 = $("#auth-password2");
+  if (p2) p2.style.display = on ? "" : "none";
+  const toggle = $("#btn-toggle-auth");
+  if (toggle) toggle.textContent = on ? "Have an account?" : "Need an account?";
+}
+
+async function register(email, password) {
+  const res = await fetch(API("/auth/register"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || `Register failed (${res.status})`);
+  setAccessToken(data.accessToken);
+  const u = $("#auth-user");
+  if (u) u.textContent = data?.user?.email || email;
+  return data;
+}
+
 // --------- DOM Ready ----------
 document.addEventListener("DOMContentLoaded", () => {
   const on = (sel, ev, fn, opts) => { const el = $(sel); if (el) el.addEventListener(ev, fn, opts); return !!el; };
@@ -559,27 +632,20 @@ document.addEventListener("DOMContentLoaded", () => {
     show("// output will appear here");
   });
 
-  // --- EXISTING API BINDINGS  ---
+  // --- EXISTING API BINDINGS ---
   on("#btn-positions",    "click", callPositions);
   on("#btn-visualpasses", "click", callVisualPasses);
   on("#btn-radiopasses",  "click", callRadioPasses);
   on("#btn-above",        "click", callAbove);
 
-  const preset = $("#hm-preset");
-  const customWrap = $("#hm-custom-wrap");
-  if (preset && customWrap) {
-    preset.addEventListener("change", () => {
-      customWrap.style.display = preset.value === "custom" ? "" : "none";
-    });
-  }
-
-  // --- AUTH PANEL ---
+  // ===================== AUTH PANEL =====================
   const emailEl = $("#auth-email");
   const passEl  = $("#auth-password");
 
+  // Login
   on("#btn-login", "click", async () => {
     try {
-      const email = emailEl?.value?.trim() || "";
+      const email = (emailEl?.value || "").trim().toLowerCase();
       const password = passEl?.value || "";
       if (!email || !password) throw new Error("Enter email and password.");
       setStatus("Logging in …");
@@ -591,21 +657,42 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // Press Enter in password field -> login
+  // Enter in password -> login
   if (passEl) {
     passEl.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const btn = $("#btn-login");
-        btn?.click();
-      }
+      if (e.key === "Enter") $("#btn-login")?.click();
     });
   }
 
+  // --- REGISTER ---
+  on("#btn-register", "click", () => {
+    const prefill = $("#auth-email")?.value?.trim() || "";
+    if (typeof openRegisterDrawer === "function") {
+      openRegisterDrawer(prefill);
+    }
+  });
+  on("#reg-close", "click", () => {
+    if (typeof closeRegisterDrawer === "function") closeRegisterDrawer();
+  });
+  on("#reg-overlay", "click", (e) => {
+    if (e.target === e.currentTarget && typeof closeRegisterDrawer === "function") {
+      closeRegisterDrawer();
+    }
+  });
+  on("#reg-submit", "click", async () => {
+    if (typeof doRegister === "function") await doRegister();
+  });
+  const regPw = $("#reg-password");
+  regPw && regPw.addEventListener("keydown", (e) => { if (e.key === "Enter" && typeof doRegister === "function") doRegister(); });
+  const regEmail = $("#reg-email");
+  regEmail && regEmail.addEventListener("keydown", (e) => { if (e.key === "Enter") $("#reg-password")?.focus(); });
+
+  // Logout
   on("#btn-logout", "click", async () => {
     await logout();
     setStatus("Logged out.");
   });
 
-  // --- INITIAL AUTH STATE ---
+  // Initial auth UI
   setAccessToken(""); // start logged out
 });
