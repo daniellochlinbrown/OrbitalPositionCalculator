@@ -229,26 +229,17 @@ async function callSimulateQuick(satid, durationSec = 600, stepSec = 1) {
   try {
     if (!satid) throw new Error("satid is required (fill Simulation or Dashboard Satellite field)");
     setStatus(`Simulating ${durationSec}s @${stepSec}s for ${satid} …`);
-    console.log("[simulate] POST /simulate", { satid, durationSec, stepSec });
-
-    const data = await fetchJSON(API(`/simulate`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ satid, durationSec, stepSec })
-    });
-
-    console.log("[simulate] response", data);
+  const data = await fetchJSON(API(`/simulate?db=1`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ satid, durationSec, stepSec })
+  });
     show(data);
-    if (data?.points?.length) {
-      drawOrbit(data);
-    }
+    if (data?.points?.length) drawOrbit(data);
     setStatus("Done");
-  } catch (e) {
-    console.error("[simulate] error", e);
-    setStatus(e.message);
-    show({ error: e.message });
-  }
+  } catch (e) { setStatus(e.message); show({ error: e.message }); }
 }
+
 
 async function onSimulateClick() {
   const satid       = getSimSatId();
@@ -288,10 +279,12 @@ function renderSidebar() {
     const name = document.createElement("div");
     name.className = "name";
     name.textContent = `${s.name} (${s.id})`;
-    name.title = "Click to fetch current position";
-    name.addEventListener("click", async () => {
+    // 👇 Only fill inputs; do NOT fetch
+    name.title = "Click to fill Satellite ID (no fetch)";
+    name.addEventListener("click", () => {
       fillSatInputs(s.id);
-      await callNow(s.id);
+      setStatus(`Selected ${s.name} (${s.id})`);
+      show({ message: "Satellite selected (no API call)", satid: String(s.id) });
     });
 
     const actions = document.createElement("div");
@@ -304,7 +297,7 @@ function renderSidebar() {
     simBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
       fillSatInputs(s.id);
-      await callSimulateQuick(s.id); // 600s @ 1s
+      await callSimulateQuick(s.id);
     });
 
     actions.appendChild(simBtn);
@@ -314,7 +307,8 @@ function renderSidebar() {
   });
 }
 
-// --------- Sections / Nav ----------
+
+// --------- Nav ----------
 $$(".topbar .nav .navbtn").forEach(btn => {
   const section = btn.dataset.section;
   if (!section) return;
@@ -631,12 +625,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatus("Idle");
     show("// output will appear here");
   });
-
-  // --- EXISTING API BINDINGS ---
-  on("#btn-positions",    "click", callPositions);
-  on("#btn-visualpasses", "click", callVisualPasses);
-  on("#btn-radiopasses",  "click", callRadioPasses);
-  on("#btn-above",        "click", callAbove);
 
   // ===================== AUTH PANEL =====================
   const emailEl = $("#auth-email");

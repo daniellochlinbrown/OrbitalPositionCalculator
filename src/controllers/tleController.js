@@ -1,62 +1,87 @@
 // src/controllers/tleController.js
-const axios = require('axios');
+// Uses DB (Prisma Tle) as the main db
+// - getTLEById(): returns { line1, line2, name, epoch, source, stale }
+// - getTLERoute(): Express handler for GET /tle/:satid
+// - refreshTLERoute(): Express handler to force-refresh a TLE from CelesTrak
 
-const cache = new Map();                  // satid -> { data:{line1,line2}, exp }
-const TTL_MS = 15 * 60 * 1000;
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-async function fetchTLEFromCelestrak(satid) {
-  const url = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${encodeURIComponent(satid)}&FORMAT=TLE`;
-  const resp = await axios.get(url, { timeout: 10000, responseType: 'text', validateStatus: () => true });
-  if (!resp || typeof resp.status === 'undefined') throw new Error('No HTTP response');
-  if (resp.status !== 200) {
-    const snippet = String(resp.data || '').slice(0, 120).replace(/\s+/g, ' ');
-    throw new Error(`TLE fetch failed ${resp.status}: ${snippet}`);
-  }
+const {
+  getOrFetchTLE,    
+  fetchTLEFromCelestrak, 
+  upsertTLE,            
+} = require('../utils/tleStore');
 
-  const lines = String(resp.data || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  let line1 = null, line2 = null;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('1 ') && i + 1 < lines.length && lines[i + 1].startsWith('2 ')) {
-      line1 = lines[i];
-      line2 = lines[i + 1];
-      break;
-    }
-  }
-  if (!line1 || !line2) {
-    if (lines.length >= 2 && lines[0].startsWith('1 ') && lines[1].startsWith('2 ')) {
-      line1 = lines[0]; line2 = lines[1];
-    }
-  }
-  if (!line1 || !line2) throw new Error(`TLE not found/invalid format (got ${lines.length} lines)`);
-  return { line1, line2 };
+const DEFAULT_MAX_AGE_HOURS = 12;
+
+function isStale(epoch, days = 14) {
+  if (!epoch) return true;
+  return Date.now() - new Date(epoch).getTime() > days * 86400 * 1000;
 }
 
-// Pure helper
-async function getTLEById(satid) {
-  const key = String(satid || '').trim();
-  if (!key) throw new Error('satid required');
-  const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && hit.exp > now) return hit.data;
-  const data = await fetchTLEFromCelestrak(key);
-  cache.set(key, { data, exp: now + TTL_MS });
-  return data;
+async function getTLEById(satid, { maxAgeHours = DEFAULT_MAX_AGE_HOURS } = {}) {
+  const id = String(satid || '').trim();
+  if (!id) throw new Error('satid required');
+
+  const { tle1, tle2, name, epoch, source } = await getOrFetchTLE(prisma, id, { maxAgeHours });
+  return {
+    line1: tle1,
+    line2: tle2,
+    name,
+    epoch,
+    source,          
+    stale: isStale(epoch),
+  };
 }
 
-// Express route wrapper
+/**
+ * Express: GET /tle/:satid
+ * Responds with { satid, line1, line2, name, epoch, source, stale }
+ */
 async function getTLERoute(req, res) {
   try {
     const satid = String(req.params.satid || '').trim();
     if (!satid) return res.status(400).json({ error: 'satid required' });
-    const now = Date.now();
-    const hit = cache.get(satid);
-    if (hit && hit.exp > now) return res.json({ satid, ...hit.data, cached: true });
-    const data = await fetchTLEFromCelestrak(satid);
-    cache.set(satid, { data, exp: now + TTL_MS });
-    res.json({ satid, ...data, cached: false });
+
+    const tle = await getTLEById(satid, { maxAgeHours: DEFAULT_MAX_AGE_HOURS });
+    res.json({ satid, ...tle });
   } catch (e) {
     res.status(500).json({ error: e.message || 'Failed to fetch TLE' });
   }
 }
 
-module.exports = { getTLEById, getTLERoute };
+/**
+ * Express: POST /admin/tle/refresh/:satid  (or GET, up to you)
+ * Forces a fetch from CelesTrak and upserts into DB; returns fresh TLE.
+ */
+async function refreshTLERoute(req, res) {
+  try {
+    const satid = String(req.params.satid || req.body?.satid || '').trim();
+    if (!satid) return res.status(400).json({ error: 'satid required' });
+
+    const idNum = Number(satid);
+    if (!Number.isFinite(idNum)) return res.status(400).json({ error: 'satid must be numeric' });
+
+    const { name, tle1, tle2 } = await fetchTLEFromCelestrak(idNum);
+    const saved = await upsertTLE(prisma, { noradId: idNum, name, tle1, tle2 }, { keepHistory: true });
+
+    res.json({
+      satid,
+      line1: saved.line1,
+      line2: saved.line2,
+      name: saved.name,
+      epoch: saved.epoch,
+      source: 'refresh',
+      stale: isStale(saved.epoch),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'Failed to refresh TLE' });
+  }
+}
+
+module.exports = {
+  getTLEById,
+  getTLERoute,
+  refreshTLERoute,
+};

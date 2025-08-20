@@ -18,3 +18,33 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+model Tle {
+  // NORAD Catalog Number
+  noradId   Int      @id
+  name      String?  // optional: satellite name if you capture it
+  line1     String
+  line2     String
+
+  // Epoch extracted from TLE or from satrec.jdsatepoch
+  epoch     DateTime
+
+  source    String   @default("celestrak")
+  fetchedAt DateTime @default(now()) // when we last fetched
+  updatedAt DateTime @updatedAt      // Prisma-managed
+
+  @@index([epoch])
+}
+
+// Optional: keep a history of TLE revisions (handy for debugging / replays)
+model TleHistory {
+  id        Int      @id @default(autoincrement())
+  noradId   Int
+  line1     String
+  line2     String
+  epoch     DateTime
+  source    String   @default("celestrak")
+  fetchedAt DateTime @default(now())
+
+  @@index([noradId, fetchedAt])
+}
