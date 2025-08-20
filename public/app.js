@@ -148,7 +148,6 @@ function pLimitLocal(concurrency = 6) {
   return (fn) => new Promise((res, rej) => { q.push({ fn, res, rej }); next(); });
 }
 
-// Popularity heuristics
 function scoreName(nameRaw) {
   const name = String(nameRaw || '').toUpperCase();
 
@@ -337,11 +336,16 @@ function renderSidebar() {
     name.textContent = `${s.name} (${s.id})`;
     // Only fill inputs; do NOT fetch
     name.title = "Click to fill Satellite ID (no fetch)";
-    name.addEventListener("click", () => {
+    name.addEventListener("click", async () => {
       fillSatInputs(s.id);
-      setStatus(`Selected ${s.name} (${s.id})`);
-      show({ message: "Satellite selected (no API call)", satid: String(s.id) });
+      setStatus(`Selected ${s.name} (${s.id}) — simulating…`);
+      try {
+        await callSimulateQuick(s.id);
+      } catch (e) {
+        setStatus(e.message || "Simulation failed");
+      }
     });
+
 
     const actions = document.createElement("div");
     actions.className = "mini";
@@ -448,6 +452,37 @@ function frameOrbit(object3D) {
     camera.lookAt(center);
   }
 }
+
+function revealOrbitForTrack(track) {
+  if (!THREE_SCENE || !track || !track.positions?.length) return;
+  const { pathGroup } = THREE_SCENE;
+
+  // Remove any previously drawn orbit lines for clarity
+  if (Array.isArray(THREE_SCENE.paths)) {
+    THREE_SCENE.paths.forEach(t => {
+      if (t.line) {
+        pathGroup.remove(t.line);
+        t.line.geometry?.dispose?.();
+        t.line.material?.dispose?.();
+        t.line = null;
+      }
+    });
+  }
+
+  // Draw a highlighted line for this satellite
+  const lineGeom = new THREE.BufferGeometry().setFromPoints(track.positions);
+  const lineMat  = new THREE.LineBasicMaterial({ color: 0x38BDF8, transparent: true, opacity: 0.9 });
+  const line     = new THREE.Line(lineGeom, lineMat);
+  pathGroup.add(line);
+  track.line = line;
+
+  // Frame the selected orbit
+  frameOrbit(line);
+
+  const label = track?.meta?.name || (track?.meta?.satid ? `NORAD ${track.meta.satid}` : "Satellite");
+  setStatus(`Showing orbit for ${label}`);
+}
+
 
 // ---------- 3D Globe (Three.js) ----------
 let THREE_SCENE = null;
@@ -598,6 +633,40 @@ function initGlobe() {
     }
   });
 
+  renderer.domElement.addEventListener('click', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  const sats = [];
+  const satToTrack = new Map();
+
+  // Multi-sat markers
+  if (Array.isArray(THREE_SCENE.paths)) {
+    for (const tr of THREE_SCENE.paths) {
+      if (tr?.sat) {
+        sats.push(tr.sat);
+        satToTrack.set(tr.sat.id || tr.sat.uuid, tr);
+      }
+    }
+  }
+
+  if (THREE_SCENE.sat && THREE_SCENE.path) {
+    sats.push(THREE_SCENE.sat);
+    satToTrack.set(THREE_SCENE.sat.id || THREE_SCENE.sat.uuid, { ...THREE_SCENE.path, sat: THREE_SCENE.sat, meta: THREE_SCENE.singleMeta });
+  }
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(sats, false);
+  if (!hits.length) return;
+
+  const obj = hits[0].object;
+  const key = obj.id || obj.uuid;
+  const track = satToTrack.get(key);
+  if (track) revealOrbitForTrack(track);
+});
+
+
   // Resize handling
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver(() => {
@@ -709,28 +778,37 @@ function drawOrbit(sim) {
   if (!THREE_SCENE) initGlobe();
 
   const { pathGroup, sat, R } = THREE_SCENE;
-  pathGroup.clear(); 
-  THREE_SCENE.paths = []; 
+
+  // reset multi state + clear any previous single path visuals
+  pathGroup.clear();
+  THREE_SCENE.paths = [];
 
   const pts = sim.points || [];
   if (pts.length < 2) { setStatus("Not enough points to draw."); return; }
 
+  // positions for marker + path
   const positions = pts.map(p => llaToCartesian(p.lla.lat, p.lla.lon, p.lla.alt, R));
+
+  // move the animated satellite marker
   sat.position.copy(positions[0]);
 
+  // build the line path (orbit track)
+  const lineGeom = new THREE.BufferGeometry().setFromPoints(positions);
+  const lineMat  = new THREE.LineBasicMaterial({ color: 0x38BDF8, transparent: true, opacity: 0.8 });
+  const line     = new THREE.Line(lineGeom, lineMat);
+  pathGroup.add(line);
+
+  // drive the marker animation along the points
   const dt = Math.max(1, ((pts[1]?.t ?? (pts[0].t + 1)) - pts[0].t));
   THREE_SCENE.path = { positions, dt, i: 0, acc: 0 };
   THREE_SCENE.singleMeta = { name: sim.name || `NORAD ${sim.satid}`, satid: sim.satid };
 
-  if (!THREE_SCENE.framedOnce) {
-    const tmpLineGeom = new THREE.BufferGeometry().setFromPoints(positions.slice(0, 64));
-    const tmpLineObj = new THREE.Line(tmpLineGeom, new THREE.LineBasicMaterial());
-    frameOrbit(tmpLineObj);
-    THREE_SCENE.framedOnce = true;
-  }
+  // always reframe to the new orbit the user picked
+  frameOrbit(line);
 
-  setStatus(`Satellite ready: ${positions.length} points (marker only)`);
+  setStatus(`Orbit ready: ${(sim.name || `NORAD ${sim.satid}`)} — ${positions.length} pts`);
 }
+
 
 // ======== Multi-orbit helpers (markers only) ========
 function frameAll() {
