@@ -11,8 +11,7 @@
 </head>
 
 <body>
-
-    <!-- Sidebar first -->
+    <!-- Sidebar -->
     <aside class="sidebar">
         <div class="side-head">Popular Satellites</div>
         <ul id="satList" class="sat-list"></ul>
@@ -46,7 +45,6 @@
                 <button id="btn-login" class="navbtn" type="button">Login</button>
                 <button id="btn-register" class="btn ghost" type="button">Register</button>
             </div>
-        </div>
         </div>
     </header>
 
@@ -94,6 +92,7 @@
             <div class="card">
                 <h2>Orbit Simulation</h2>
                 <p>Run a short CPU-heavy propagation for a selected satellite.</p>
+
                 <div class="row">
                     <div class="field">
                         <label>Satellite NORAD ID</label>
@@ -108,25 +107,28 @@
                         <input id="sim-step" value="1" />
                     </div>
                 </div>
+
                 <button class="primary" id="btn-simulate">Simulate</button>
+
+                <!-- Fleet controls -->
+                <div class="row" style="margin-top:8px; align-items:center; gap:8px">
+                    <label for="fleet-size" class="muted">Fleet size:</label>
+                    <select id="fleet-size">
+                        <option value="10">Flight 10</option>
+                        <option value="25" selected>Flight 25</option>
+                        <option value="50">Flight 50</option>
+                        <option value="all">Full Fleet</option>
+                    </select>
+                    <button class="ghost" id="btn-deploy-fleet" type="button">Deploy to Globe</button>
+                    <button class="ghost" id="btn-clear-fleet" type="button">Clear</button>
+                </div>
+                <small class="muted">Propagates next 84,000 s (~23.3 h) at 60 s steps (DB-only).</small>
 
                 <div id="globeWrap"
                     style="height: 480px; margin-top: 12px; border: 1px solid #1f2937; border-radius: 10px; overflow: hidden;">
                 </div>
                 <small class="muted">Tip: leave Satellite empty to use the Dashboard’s “Satellite NORAD ID”.</small>
             </div>
-
-            <!-- PASSES -->
-            <section id="passes" class="section">
-                <div class="card">
-                    <h2>Pass Predictions (Coming Soon)</h2>
-                    <p>Buttons will call <code>/visualpasses</code> and <code>/radiopasses</code> once available.</p>
-                    <div class="row">
-                        <button class="ghost" disabled>Get Visual Passes</button>
-                        <button class="ghost" disabled>Get Radio Passes</button>
-                    </div>
-                </div>
-            </section>
 
             <!-- SETTINGS -->
             <section id="settings" class="section">
@@ -148,6 +150,7 @@
                     </div>
                 </div>
             </section>
+        </section>
     </main>
 
     <footer class="foot">
@@ -156,10 +159,10 @@
         <span class="muted">Prototype UI</span>
     </footer>
 
+    <!-- Three.js -->
     <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
   </script>
-
     <script type="module">
         import * as THREE from "three";
         import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
@@ -168,40 +171,6 @@
     </script>
 
     <script src="./app.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const preset = document.getElementById('hm-preset');
-            const customWrap = document.getElementById('hm-custom-wrap');
-            if (preset) {
-                preset.addEventListener('change', () => {
-                    customWrap.style.display = preset.value === 'custom' ? '' : 'none';
-                });
-            }
-        });
-    </script>
-
-    <!-- Registration Drawer -->
-    <div id="reg-overlay" class="drawer-overlay" hidden></div>
-    <aside id="reg-drawer" class="drawer" hidden aria-hidden="true" aria-labelledby="reg-title">
-        <header class="drawer-head">
-            <h3 id="reg-title">Create Account</h3>
-            <button id="reg-close" class="btn ghost" type="button" aria-label="Close">✕</button>
-        </header>
-        <div class="drawer-body">
-            <label class="field">
-                <span>Email</span>
-                <input id="reg-email" type="email" placeholder="you@example.com" autocomplete="email" />
-            </label>
-            <label class="field">
-                <span>Password</span>
-                <input id="reg-password" type="password" placeholder="min 8 characters" autocomplete="new-password" />
-            </label>
-            <button id="reg-submit" class="primary" type="button">Create account</button>
-            <p class="muted" style="margin-top:8px">We’ll sign you in right after registration.</p>
-            <div id="reg-error" class="error" role="alert" style="display:none"></div>
-        </div>
-    </aside>
-
 </body>
 
 </html>
