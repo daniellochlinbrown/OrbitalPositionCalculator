@@ -33,6 +33,7 @@ function setAccessToken(t) {
   }
 }
 
+
 // ----- Register drawer helpers -----
 function openRegisterDrawer(prefillEmail = "") {
   const ov = $("#reg-overlay"), dr = $("#reg-drawer");
@@ -79,6 +80,7 @@ async function doRegister() {
   }
 }
 
+
 async function apiFetch(url, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (ACCESS_TOKEN) headers.set("Authorization", `Bearer ${ACCESS_TOKEN}`);
@@ -122,11 +124,10 @@ async function logout() {
   setAccessToken("");
 }
 
-// ========= Popular draw config & utils =========
-const POP_DURATION_SEC = 84000; // ~23.3h ahead
-const POP_STEP_SEC     = 60;    // 60s steps to keep things light
+const POP_DURATION_SEC = 84000;
+const POP_STEP_SEC     = 60;
 
-// Your provided NORAD IDs (deduped + validated)
+// Your provided NORAD IDs
 const USER_NORAD_IDS = Array.from(new Set(String(
   "25544,59588,57800,54149,52794,48865,48274,46265,43682,43641,43521,42758,41337,41038,39766,39679,39358,38341,37731,33504,31793,31792,31789,31598,31114,29507,29228,28932,28931,28738,28499,28480,28415,28353,28222,28059,27601,27597,27432,27424,27422,27386,26474,26070,25994,25977,25876,25861,25860,25732,25407,25400,24883,24298,23705,23561,23405,23343,23088,23087,22830,22803,22626,22566,22286,22285,22236,22220,22219,21949,21938,21876,21819,21610,21574,21423,21422,21397,21088,20775,20666,20663,20625,20580,20511,20466,20465,20453,20443,20323,20262,20261,19650,19574,19573,19257,19210,19120,19046,18958,18749,18421,18187,18153,17973,17912,17590,17589,17567,17295,16908,16882,16792,16719,16496,16182,15945,15772,15483,14820,14699,14208,14032,13819,13553,13403,13154,13068,12904,12585,12465,12139,11672,11574,11267,10967,10114,8459,6155,6153,5730,5560,5118,4327,3669,3597,3230,2802,877,733,694,43013,39444"
 ).split(',').map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0)));
@@ -151,7 +152,7 @@ function pLimitLocal(concurrency = 6) {
 function scoreName(nameRaw) {
   const name = String(nameRaw || '').toUpperCase();
 
-  // Big crowd-pleasers
+  // Well known satellites
   if (/\bISS\b|ZARYA/.test(name))         return 100;
   if (/HUBBLE/.test(name))                return 96;
   if (/\bTESS\b/.test(name))              return 93;
@@ -176,7 +177,6 @@ function scoreName(nameRaw) {
   return 60;
 }
 
-// Optional: special bumps for known NORADs
 const ID_BUMPS = new Map([
   [25544, 15], // ISS — ensure #1
   [20580, 10], // Hubble
@@ -212,7 +212,6 @@ async function rankIds(ids) {
     return { id, name: nm, score: s };
   });
 
-  // Stable sort: score desc, then by original order
   const indexOf = new Map(ids.map((v, i) => [v, i]));
   scored.sort((a, b) => (b.score - a.score) || (indexOf.get(a.id) - indexOf.get(b.id)));
   return scored.map(x => x.id);
@@ -229,7 +228,6 @@ function groupsFrom(sortedIds) {
 
 
 function selectedGroupName() {
-  // Prefer new Fleet control, fallback to any legacy select if present
   const el =
     document.getElementById("fleet-size") ||
     document.getElementById("popular-count");
@@ -527,7 +525,7 @@ function initGlobe() {
   orbitGroup.add(sat);
   orbitGroup.rotation.y = 0;
 
-  // Tooltip div (for hover labels)
+  // Tooltip div
   const tooltip = document.createElement('div');
   tooltip.id = 'sat-tooltip';
   tooltip.style.position = 'absolute';
@@ -546,7 +544,7 @@ function initGlobe() {
   // Raycaster for hover
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
-  let hoveredTrack = null; // reference to THREE_SCENE.paths[i] or {sat, meta} for single
+  let hoveredTrack = null; 
 
   function updateTooltipPositionForObject(obj3D) {
     if (!obj3D) return;
@@ -707,16 +705,12 @@ function llaToCartesian(latDeg, lonDeg, altKm, R) {
   return new THREE.Vector3(x, y, z);
 }
 
-/**
- * Draw a single satellite (marker only) and animate along its path.
- * sim: { satid, name, info, points:[{t, lla:{lat,lon,alt}}...] }
- */
 function drawOrbit(sim) {
   if (!THREE_SCENE) initGlobe();
 
   const { pathGroup, sat, R } = THREE_SCENE;
-  pathGroup.clear(); // clear multi markers
-  THREE_SCENE.paths = []; // reset multi state
+  pathGroup.clear(); 
+  THREE_SCENE.paths = []; 
 
   const pts = sim.points || [];
   if (pts.length < 2) { setStatus("Not enough points to draw."); return; }
@@ -729,7 +723,6 @@ function drawOrbit(sim) {
   THREE_SCENE.singleMeta = { name: sim.name || `NORAD ${sim.satid}`, satid: sim.satid };
 
   if (!THREE_SCENE.framedOnce) {
-    // Build a temporary Box3 around first few positions for framing
     const tmpLineGeom = new THREE.BufferGeometry().setFromPoints(positions.slice(0, 64));
     const tmpLineObj = new THREE.Line(tmpLineGeom, new THREE.LineBasicMaterial());
     frameOrbit(tmpLineObj);
@@ -772,7 +765,7 @@ function clearAllOrbits() {
   setStatus("Cleared satellites.");
 }
 
-// color helper (HSL → hex int)
+// color helper
 function colorForIndex(i, total) {
   const hue = (i / Math.max(1, total)) * 360;
   const s = 70, l = 55;
@@ -821,7 +814,6 @@ function drawOrbits(simResults) {
 
 // ======== Simulate Fleet of Satellites =========
 async function simulateManyDb(ids, durationSec, stepSec) {
-  // Prefer batch endpoint if present
   try {
     const res = await fetchJSON(API(`/simulate-many?db=1`), {
       method: "POST",
@@ -832,8 +824,6 @@ async function simulateManyDb(ids, durationSec, stepSec) {
   } catch (e) {
     console.warn("[simulate-many] endpoint not available, falling back:", e.message);
   }
-
-  // Fallback: limited concurrency over /simulate?db=1
   const limit = pLimitLocal(4);
   const results = [];
   await Promise.all(ids.map(id => limit(async () => {
@@ -972,28 +962,40 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- REGISTER ---
-  on("#btn-register", "click", () => {
-    const prefill = $("#auth-email")?.value?.trim() || "";
-    if (typeof openRegisterDrawer === "function") {
-      openRegisterDrawer(prefill);
-    }
-  });
-  on("#reg-close", "click", () => {
-    if (typeof closeRegisterDrawer === "function") closeRegisterDrawer();
-  });
-  on("#reg-overlay", "click", (e) => {
-    if (e.target === e.currentTarget && typeof closeRegisterDrawer === "function") {
-      closeRegisterDrawer();
-    }
-  });
-  on("#reg-submit", "click", async () => {
-    if (typeof doRegister === "function") await doRegister();
-  });
-  const regPw = $("#reg-password");
-  regPw && regPw.addEventListener("keydown", (e) => { if (e.key === "Enter" && typeof doRegister === "function") doRegister(); });
-  const regEmail = $("#reg-email");
-  regEmail && regEmail.addEventListener("keydown", (e) => { if (e.key === "Enter") $("#reg-password")?.focus(); });
+// --- REGISTER ---
+on("#btn-register", "click", () => {
+  const prefill = $("#auth-email")?.value?.trim() || "";
+  openRegisterDrawer(prefill);
+});
+
+// Close buttons/overlay
+on("#reg-close", "click", closeRegisterDrawer);
+on("#reg-overlay", "click", (e) => {
+  if (e.target === e.currentTarget) closeRegisterDrawer();
+});
+
+// Submit button
+on("#reg-submit", "click", async () => {
+  await doRegister();
+});
+
+// Keyboard helpers
+const regPw = $("#reg-password");
+regPw && regPw.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") doRegister();
+});
+
+const regEmail = $("#reg-email");
+regEmail && regEmail.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("#reg-password")?.focus();
+});
+
+// Optional: Esc to close
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeRegisterDrawer();
+});
+
+
 
   // Logout
   on("#btn-logout", "click", async () => {

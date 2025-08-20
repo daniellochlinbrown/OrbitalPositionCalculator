@@ -363,3 +363,29 @@ select:focus {
     border: 1px solid #7f1d1d;
     border-radius: 8px;
 }
+
+/* Overlay for the drawer */
+#register-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .48);
+    backdrop-filter: blur(2px);
+    z-index: 390;
+}
+
+#register-scrim[hidden] {
+    display: none;
+}
+
+.drawer {
+    z-index: 400;
+}
+
+.drawer {
+    transform: translateX(100%);
+    transition: transform .25s ease;
+}
+
+.drawer[open] {
+    transform: translateX(0);
+}

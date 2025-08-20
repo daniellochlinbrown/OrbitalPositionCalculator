@@ -8,6 +8,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./styles.css" />
+    <!-- Three.js (for globe) -->
+    <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+    <script type="module">
+        import * as THREE from "three";
+        import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+        window.THREE = THREE;
+        window.OrbitControls = OrbitControls;
+    </script>
 </head>
 
 <body>
@@ -159,18 +169,30 @@
         <span class="muted">Prototype UI</span>
     </footer>
 
-    <!-- Three.js -->
-    <script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
-  </script>
-    <script type="module">
-        import * as THREE from "three";
-        import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-        window.THREE = THREE;
-        window.OrbitControls = OrbitControls;
-    </script>
-
     <script src="./app.js"></script>
+
+    <!-- Registration Drawer -->
+    <div id="reg-overlay" class="drawer-overlay" hidden></div>
+    <aside id="reg-drawer" class="drawer" hidden aria-hidden="true" aria-labelledby="reg-title">
+        <header class="drawer-head">
+            <h3 id="reg-title">Create Account</h3>
+            <button id="reg-close" class="btn ghost" type="button" aria-label="Close">✕</button>
+        </header>
+        <div class="drawer-body">
+            <label class="field">
+                <span>Email</span>
+                <input id="reg-email" type="email" placeholder="you@example.com" autocomplete="email" />
+            </label>
+            <label class="field">
+                <span>Password</span>
+                <input id="reg-password" type="password" placeholder="min 8 characters" autocomplete="new-password" />
+            </label>
+            <button id="reg-submit" class="primary" type="button">Create account</button>
+            <p class="muted" style="margin-top:8px">We’ll sign you in right after registration.</p>
+            <div id="reg-error" class="error" role="alert" style="display:none"></div>
+        </div>
+    </aside>
+
 </body>
 
 </html>
