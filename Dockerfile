@@ -1,23 +1,26 @@
-# Dockerfile
-FROM node:20-bookworm-slim
-
-# 1) System deps required by node-canvas (+ toolchain)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
-    libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev \
-    && rm -rf /var/lib/apt/lists/*
+# syntax=docker/dockerfile:1
+FROM node:20-alpine
 
 WORKDIR /app
 
-# 2) Install production deps
+# Install deps first
 COPY package*.json ./
-# use modern flag; same intent as --only=production
-RUN npm ci --omit=dev
+COPY prisma ./prisma
+RUN npm ci
 
-# 3) Copy source and set env
+# Generate Prisma Client inside the image
+RUN npx prisma generate
+
+# Copy the rest
 COPY . .
+
+# Environment
 ENV NODE_ENV=production
 ENV PORT=3000
+# For SQLite; path is relative to /app
+ENV DATABASE_URL="file:./prisma/dev.db"
 
 EXPOSE 3000
-CMD ["npm","start"]
+
+# Run migrations if present (falls back to db push), then start the server
+CMD sh -c "npx prisma migrate deploy || npx prisma db push; node src/index.js"
