@@ -1,4 +1,3 @@
-// src/utils/tleStore.js
 const axios = require('axios');
 const satellite = require('satellite.js');
 
@@ -14,11 +13,10 @@ async function fetchTLEFromCelestrak(noradId) {
 }
 
 function epochFromTLE(tle1, tle2) {
-  // (your existing implementation)
   const satrec = satellite.twoline2satrec(tle1, tle2);
   if (Number.isFinite(satrec.jdsatepoch)) {
     const jd = satrec.jdsatepoch;
-    const jdParts = satellite.invjday(jd); // [y,m,d,h,min,sec]
+    const jdParts = satellite.invjday(jd);
     return satellite.jdayToDate(...jdParts);
   }
   return new Date(0);
@@ -39,7 +37,6 @@ async function upsertTLE(prisma, { noradId, name, tle1, tle2 }, { keepHistory = 
   return saved;
 }
 
-// ✅ DB-first getter with hard “no fetch” option
 async function getOrFetchTLE(prisma, noradId, { maxAgeHours = 12, allowFetch = true } = {}) {
   const id = Number(noradId);
   const inDb = await prisma.tle.findUnique({ where: { noradId: id } });
@@ -53,7 +50,6 @@ async function getOrFetchTLE(prisma, noradId, { maxAgeHours = 12, allowFetch = t
 
   if (!allowFetch || process.env.TLE_ALLOW_FETCH === 'false') {
     if (!inDb) throw new Error('TLE not in DB (fetch disabled)');
-    // stale but allowed: return anyway
     return { tle1: inDb.line1, tle2: inDb.line2, name: inDb.name, epoch: inDb.epoch, source: 'db-stale' };
   }
 
@@ -63,7 +59,6 @@ async function getOrFetchTLE(prisma, noradId, { maxAgeHours = 12, allowFetch = t
   return { tle1, tle2, name, epoch: epochFromTLE(tle1, tle2), source: 'fetch' };
 }
 
-// ✅ Pure DB-only helper
 async function getTLEFromDbOnly(prisma, noradId) {
   const row = await prisma.tle.findUnique({ where: { noradId: Number(noradId) } });
   if (!row) throw new Error('TLE not in DB (DB-only mode)');

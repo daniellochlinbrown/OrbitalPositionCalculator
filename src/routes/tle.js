@@ -1,4 +1,3 @@
-// src/routes/tle.js
 const { Router } = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { getTLERoute, ensureManyTLERoute } = require('../controllers/tleController');
@@ -8,7 +7,7 @@ const router = Router();
 
 router.use(require('express').json({ limit: '1mb' }));
 
-// GET /tle?limit=500  -> sidebar list
+// GET /tle?limit=500 
 router.get('/', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 100, 500);

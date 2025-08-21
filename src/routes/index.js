@@ -1,4 +1,3 @@
-// src/routes/index.js
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 
@@ -20,11 +19,7 @@ router.use('/',    orbitsRouter);
 router.use('/',    batchRouter);
 router.use('/favourites', favouritesRouter);
 
-// Health
-router.get('/', (_req, res) => res.send('Orbital Position API is running.'));
-router.get('/health', (_req, res) => res.json({ ok: true }));
-
-// Lightweight TLE metadata lookup for a list of NORAD IDs
+// TLE metadata lookup for a list of NORAD IDs
 router.post('/tle/meta', async (req, res) => {
   try {
     const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];
