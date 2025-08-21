@@ -6,22 +6,30 @@ const { PrismaClient } = require('@prisma/client');
 const tleRouter    = require('./tle');
 const orbitsRouter = require('./orbits');
 const batchRouter  = require('./batch');
+const favouritesRouter = require('./favourites');
 
 const prisma = new PrismaClient();
 const router = express.Router();
 
+// Make sure JSON request bodies are parsed for routes in this router
+router.use(express.json({ limit: '1mb' }));
+
 // Mount sub-routers
-router.use('/tle', tleRouter);   
+router.use('/tle', tleRouter);
 router.use('/',    orbitsRouter);
-router.use('/',    batchRouter); 
+router.use('/',    batchRouter);
+router.use('/favourites', favouritesRouter);
 
 // Health
 router.get('/', (_req, res) => res.send('Orbital Position API is running.'));
+router.get('/health', (_req, res) => res.json({ ok: true }));
 
+// Lightweight TLE metadata lookup for a list of NORAD IDs
 router.post('/tle/meta', async (req, res) => {
   try {
-    const ids = (req.body?.ids || [])
-      .map(v => parseInt(String(v), 10))
+    const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = raw
+      .map(v => parseInt(v, 10))
       .filter(n => Number.isFinite(n) && n > 0);
 
     if (!ids.length) return res.json({ items: [] });
@@ -33,6 +41,7 @@ router.post('/tle/meta', async (req, res) => {
 
     res.json({ items: rows });
   } catch (e) {
+    console.error('POST /tle/meta error:', e);
     res.status(500).json({ error: e.message || 'Failed to fetch TLE meta' });
   }
 });

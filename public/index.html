@@ -23,7 +23,11 @@
 <body>
     <!-- Sidebar -->
     <aside class="sidebar">
-        <div class="side-head">Popular Satellites</div>
+        <div class="side-head">Satellites</div>
+        <div class="side-search">
+            <input id="satSearch" type="text" placeholder="Search name or NORAD…" autocomplete="off" />
+        </div>
+
         <ul id="satList" class="sat-list"></ul>
     </aside>
 
@@ -84,7 +88,7 @@
                         </div>
                     </div>
                     <div class="row">
-                        <button class="primary" id="btn-dry-run">UI Dry Run</button>
+                        <button class="primary" id="btn-dry-run">Preview Request</button>
                         <button class="ghost" id="btn-clear">Clear Output</button>
                     </div>
                 </div>
@@ -101,7 +105,7 @@
         <section id="simulate" class="section">
             <div class="card">
                 <h2>Orbit Simulation</h2>
-                <p>Run a short CPU-heavy propagation for a selected satellite.</p>
+                <p>Run a short propagation for a selected satellite.</p>
 
                 <div class="row">
                     <div class="field">

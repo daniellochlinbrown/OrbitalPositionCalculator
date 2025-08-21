@@ -12,6 +12,6 @@ router.post('/register', express.json(), async (req, res) => {
   const user = await prisma.user.create({ data: { email, passHash, roles: 'user' } });
 
   const payload = { sub: String(user.id), email: user.email, roles: user.roles, rv: user.refreshVersion };
-  setRTC(res, signRT(payload)); // set refresh cookie
+  setRTC(res, signRT(payload)); 
   res.status(201).json({ accessToken: signAT(payload), user: { id: user.id, email: user.email, roles: user.roles } });
 });

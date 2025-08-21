@@ -2,37 +2,43 @@
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 }
 
 model User {
-  id             Int      @id @default(autoincrement())
-  email          String   @unique
+  id             Int        @id @default(autoincrement())
+  email          String     @unique
   passHash       String
-  roles          String   @default("user")
-  refreshVersion Int      @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  roles          String     @default("user")
+  refreshVersion Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // relations
+  favorites      Favorite[]
 }
 
 model Tle {
   // NORAD Catalog Number
-  noradId   Int      @id
-  name      String?  // optional: satellite name if you capture it
+  noradId   Int       @id
+  name      String?   // optional: satellite name if you capture it
   line1     String
   line2     String
 
   // Epoch extracted from TLE or from satrec.jdsatepoch
   epoch     DateTime
 
-  source    String   @default("celestrak")
-  fetchedAt DateTime @default(now()) // when we last fetched
-  updatedAt DateTime @updatedAt      // Prisma-managed
+  source    String    @default("celestrak")
+  fetchedAt DateTime  @default(now()) // when we last fetched
+  updatedAt DateTime  @updatedAt      // Prisma-managed
+
+  // relations
+  favorites Favorite[]
 
   @@index([epoch])
 }
@@ -48,4 +54,19 @@ model TleHistory {
   fetchedAt DateTime @default(now())
 
   @@index([noradId, fetchedAt])
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  noradId   Int
+  createdAt DateTime @default(now())
+
+  // relations
+  user User @relation(fields: [userId],  references: [id],        onDelete: Cascade)
+  tle  Tle  @relation(fields: [noradId], references: [noradId],   onDelete: Cascade)
+
+  @@unique([userId, noradId])  // one favourite per satellite per user
+  @@index([userId])
+  @@index([noradId])
 }

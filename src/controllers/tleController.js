@@ -1,16 +1,10 @@
-// src/controllers/tleController.js
-// Uses DB (Prisma Tle) as the main db
-// - getTLEById(): returns { line1, line2, name, epoch, source, stale }
-// - getTLERoute(): Express handler for GET /tle/:satid
-// - refreshTLERoute(): Express handler to force-refresh a TLE from CelesTrak
-
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 const {
-  getOrFetchTLE,    
-  fetchTLEFromCelestrak, 
-  upsertTLE,            
+  getOrFetchTLE,
+  fetchTLEFromCelestrak,
+  upsertTLE,
 } = require('../utils/tleStore');
 
 const DEFAULT_MAX_AGE_HOURS = 12;
@@ -30,15 +24,12 @@ async function getTLEById(satid, { maxAgeHours = DEFAULT_MAX_AGE_HOURS } = {}) {
     line2: tle2,
     name,
     epoch,
-    source,          
+    source,
     stale: isStale(epoch),
   };
 }
 
-/**
- * Express: GET /tle/:satid
- * Responds with { satid, line1, line2, name, epoch, source, stale }
- */
+// GET /tle/:satid
 async function getTLERoute(req, res) {
   try {
     const satid = String(req.params.satid || '').trim();
@@ -51,10 +42,7 @@ async function getTLERoute(req, res) {
   }
 }
 
-/**
- * Express: POST /admin/tle/refresh/:satid  (or GET, up to you)
- * Forces a fetch from CelesTrak and upserts into DB; returns fresh TLE.
- */
+// POST /admin/tle/refresh/:satid
 async function refreshTLERoute(req, res) {
   try {
     const satid = String(req.params.satid || req.body?.satid || '').trim();
@@ -80,8 +68,49 @@ async function refreshTLERoute(req, res) {
   }
 }
 
+/**
+ * POST /tle/ensure
+ * Body: { ids: number[], maxAgeHours?: number }
+ * For each id: fetch from DB if fresh; otherwise refresh from CelesTrak and upsert.
+ * Returns: { items: [{ noradId, name, epoch, source, stale }] }
+ */
+async function ensureManyTLERoute(req, res) {
+  try {
+    const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = raw
+      .map(v => parseInt(v, 10))
+      .filter(n => Number.isFinite(n) && n > 0);
+
+    const maxAgeHours = Number(req.body?.maxAgeHours) || DEFAULT_MAX_AGE_HOURS;
+
+    if (!ids.length) return res.json({ items: [] });
+
+    const items = [];
+    for (const id of ids) {
+      try {
+        const { tle1, tle2, name, epoch, source } = await getOrFetchTLE(prisma, String(id), { maxAgeHours });
+        items.push({
+          noradId: id,
+          name: name || null,
+          epoch: epoch || null,
+          source: source || 'db',
+          stale: isStale(epoch),
+        });
+      } catch (err) {
+        items.push({ noradId: id, error: err?.message || 'Failed' });
+      }
+    }
+
+    res.json({ items });
+  } catch (e) {
+    console.error('POST /tle/ensure error:', e);
+    res.status(500).json({ error: e.message || 'Failed to ensure TLEs' });
+  }
+}
+
 module.exports = {
   getTLEById,
   getTLERoute,
   refreshTLERoute,
+  ensureManyTLERoute,
 };
