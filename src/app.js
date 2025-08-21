@@ -37,10 +37,6 @@ app.post('/simulate-db', orbits.simulateDbOnly);
 app.get('/now/:satid', orbits.getNow);
 app.post('/simulate', orbits.simulate);
 
-// TLE utilities
-// app.get('/tle/:satid', tle.getTLERoute);
-// app.post('/admin/tle/refresh/:satid', tle.refreshTLERoute);
-
 app.use('/', routes);
 
 // -------------------- Health check --------------------

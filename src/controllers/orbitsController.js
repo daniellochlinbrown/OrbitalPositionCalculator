@@ -57,7 +57,6 @@ exports.simulate = async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message || 'Failed' }); }
 };
 
-// ✅ DB-only endpoints (never fetch)
 exports.getNowDbOnly = async (req, res) => {
   try {
     const satid = String(req.params.satid || '').trim();
