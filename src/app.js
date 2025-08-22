@@ -26,10 +26,10 @@ app.use(express.json());
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// -------------------- Auth routes --------------------
+// Auth Routes
 app.use('/auth', authRouter);
 
-// -------------------- API routes --------------------
+// API Routes
 app.get('/now-db/:satid', orbits.getNowDbOnly);
 app.post('/simulate-db', orbits.simulateDbOnly);
 
@@ -39,7 +39,8 @@ app.post('/simulate', orbits.simulate);
 
 app.use('/', routes);
 
-// -------------------- Health check --------------------
+
+// Health check
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
 module.exports = app;

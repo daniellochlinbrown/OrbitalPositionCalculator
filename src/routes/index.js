@@ -10,7 +10,6 @@ const favouritesRouter = require('./favourites');
 const prisma = new PrismaClient();
 const router = express.Router();
 
-// Make sure JSON request bodies are parsed for routes in this router
 router.use(express.json({ limit: '1mb' }));
 
 // Mount sub-routers
@@ -19,7 +18,6 @@ router.use('/',    orbitsRouter);
 router.use('/',    batchRouter);
 router.use('/favourites', favouritesRouter);
 
-// TLE metadata lookup for a list of NORAD IDs
 router.post('/tle/meta', async (req, res) => {
   try {
     const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];

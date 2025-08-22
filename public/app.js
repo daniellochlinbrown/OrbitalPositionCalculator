@@ -1,21 +1,22 @@
-/* ----------------------- tiny DOM helpers ----------------------- */
+// DOM helpers
 const $  = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
-/* ----------------------- app state ----------------------- */
+// app utils
 let ALL_SATS = [];       // full list from the server [{ id, name, updatedAt }]
 let FILTERED_SATS = [];  // list currently shown in the sidebar
 let FAVS = new Set();    // favourite NORAD IDs
 let ACCESS_TOKEN = "";   // JWT for auth-only endpoints
 const FAV_API = '/favourites';
 
-
 const out = $("#out");
 const statusEl = $("#status");
 
-/* ----------------------- small utilities ----------------------- */
+
+// utils
 const API = (path) => (path.startsWith("http") ? path : `${path}`);
 
+// sets status on dashboard
 function setStatus(msg) {
   if (statusEl) statusEl.textContent = msg;
   console.log("[status]", msg);
@@ -31,7 +32,7 @@ function debounce(fn, ms = 200) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-// simple date helper to decide “stale”
+// checks dates to see if new API call needed
 function isOlderThan(dateStr, hours = 12) {
   if (!dateStr) return true;
   const t = new Date(dateStr).getTime();
@@ -44,7 +45,6 @@ function getCurrentSearchTerm() {
 }
 
 function sortByFavouritesThenDefault(list) {
-  // Favourites first; otherwise keep original fetch order (_ord)
   return list.slice().sort((a, b) => {
     const af = FAVS.has(a.id) ? 1 : 0;
     const bf = FAVS.has(b.id) ? 1 : 0;
@@ -55,7 +55,8 @@ function sortByFavouritesThenDefault(list) {
 }
 
 
-/* ----------------------- auth + fetch helpers ----------------------- */
+// auth + fetch token
+
 function setAccessToken(token) {
   ACCESS_TOKEN = token || "";
 
@@ -95,35 +96,29 @@ function setUserLabel(email) {
   if (el) el.textContent = email || '—';
 }
 
+async function attemptAutoLogin() {
+  try {
+    const res = await fetch(API('/auth/refresh'), {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!res.ok) return false;
+    const { accessToken } = await res.json().catch(() => ({}));
+    if (!accessToken) return false;
 
- async function attemptAutoLogin() {
-   try {
-     const res = await fetch(API('/auth/refresh'), {
-       method: 'POST',
-       credentials: 'include',
-     });
-     if (!res.ok) return false;
-     const { accessToken } = await res.json().catch(() => ({}));
-     if (!accessToken) return false;
+    setAccessToken(accessToken);
+    const payload = parseJwt(accessToken);
+    setUserLabel(payload?.email || '—');
 
-     setAccessToken(accessToken);
-      // show the user’s email from the JWT
-      const payload = parseJwt(accessToken);
-      setUserLabel(payload?.email || '—');
-
-     // load favourites immediately
-     if (typeof loadFavourites === 'function') {
-       await loadFavourites().catch(() => {});
-     }
-     setStatus('Welcome back.');
-     return true;
-   } catch {
-     return false;
-   }
- }
-
-
-
+    if (typeof loadFavourites === 'function') {
+      await loadFavourites().catch(() => {});
+    }
+    setStatus('Welcome back.');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function apiFetch(url, opts = {}) {
   const headers = new Headers(opts.headers || {});
@@ -131,7 +126,6 @@ async function apiFetch(url, opts = {}) {
 
   const res = await fetch(url, { ...opts, headers, credentials: "include" });
 
-  // auto-refresh token once if we got a 401
   if (res.status === 401) {
     const r = await fetch(API("/auth/refresh"), { method: "POST", credentials: "include" });
     if (r.ok) {
@@ -165,13 +159,13 @@ async function login(email, password) {
   return data;
 }
 
-
 async function logout() {
   try { await fetchJSON(API("/auth/logout"), { method: "POST", credentials: "include" }); } catch {}
   setAccessToken("");
 }
 
-/* ----------------------- favourites ----------------------- */
+
+// favourites (used to distinguish between users)
 async function loadFavourites() {
   try {
     const data = await fetchJSON(API(FAV_API));
@@ -204,12 +198,12 @@ async function toggleFavourite(noradId) {
     setStatus(e.message || "Failed to update favourites");
   }
 
-  // Re-apply current search + favourites-first sort, then repaint
   applySearchFilter(getCurrentSearchTerm());
   renderFavourites();
 }
 
-/* ----------------------- register drawer ----------------------- */
+// registration drawer
+
 function openRegisterDrawer(prefillEmail = "") {
   const ov = $("#reg-overlay"), dr = $("#reg-drawer");
   if (!ov || !dr) return;
@@ -257,9 +251,9 @@ async function doRegister() {
   }
 }
 
-/* ----------------------- satellites: fetch + search + render ----------------------- */
 
-// small, popular fallback so the UI never feels empty
+// satellites sidebar 
+
 const POPULAR_FALLBACK = [
   { id: 25544, name: "ISS (ZARYA)" },
   { id: 20580, name: "Hubble Space Telescope" },
@@ -284,7 +278,6 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
     const firstItems = Array.isArray(first?.items) ? first.items : [];
 
     if (!firstItems.length) {
-      // fallback list
       ALL_SATS = (Array.isArray(POPULAR_FALLBACK) ? POPULAR_FALLBACK : []).map((r, i) => ({
         ...r,
         _ord: i,
@@ -340,36 +333,16 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
   }
 }
 
-// refresh stale rows server-side; try canonical + fallbacks
 async function ensureFresh(ids, maxAgeHours = 12) {
   if (!ids?.length) return { items: [] };
-  const payload = { ids, maxAgeHours, refreshStale: true };
+  const payload = { ids, maxAgeHours, refreshStale: true, dbOnly: true }; 
 
-  try {
-    return await fetchJSON(API('/tle/ensure'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch (e1) {
-    if (!/HTTP 404/.test(e1.message)) throw e1;
-  }
-  try {
-    return await fetchJSON(API('/tle/batch-ensure'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-  } catch (e2) {
-    if (!/HTTP 404/.test(e2.message)) throw e2;
-  }
-  return await fetchJSON(API('/tle/batch'), {
+  return await fetchJSON('/tle/ensure', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
   });
 }
-
 
 function applySearchFilter(q) {
   const term = (q || "").toLowerCase();
@@ -382,7 +355,6 @@ function applySearchFilter(q) {
   FILTERED_SATS = sortByFavouritesThenDefault(base);
   renderSidebar();
 }
-
 
 function fillSatInputs(id) {
   ["satid","pos-satid","vis-satid","rad-satid","sim-satid"].forEach(k => {
@@ -511,109 +483,15 @@ function renderFavourites() {
   });
 }
 
-/* ----------------------- nav / sections ----------------------- */
+
+// navigation
 function switchSection(name) {
   if (!name) return;
   $$(".section").forEach(sec => sec.classList.toggle("active", sec.id === name));
   $$(".topbar .nav .navbtn").forEach(b => b.classList.toggle("active", b.dataset.section === name));
 }
 
-/* ----------------------- simulation (single) ----------------------- */
-function getSimSatId() {
-  const simId  = $("#sim-satid")?.value?.trim();
-  const dashId = $("#satid")?.value?.trim();
-  return simId || dashId || "";
-}
-
-async function callSimulateQuick(satid, durationSec = 600, stepSec = 1) {
-  try {
-    if (!satid) throw new Error("satid is required (fill Simulation or Dashboard Satellite field)");
-    setStatus(`Simulating ${durationSec}s @${stepSec}s for ${satid} …`);
-    const data = await fetchJSON(API(`/simulate?db=1`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ satid, durationSec, stepSec })
-    });
-    show(data);
-    if (data?.points?.length) drawOrbit(data);
-    setStatus("Done");
-  } catch (e) {
-    setStatus(e.message);
-    show({ error: e.message });
-  }
-}
-
-async function onSimulateClick() {
-  const satid       = getSimSatId();
-  const durationSec = Number($("#sim-duration")?.value || 600);
-  const stepSec     = Number($("#sim-step")?.value || 1);
-  await callSimulateQuick(satid, durationSec, stepSec);
-}
-
-/* ----------------------- multi-sim ranking helpers ----------------------- */
-function scoreName(nameRaw) {
-  const name = String(nameRaw || "").toUpperCase();
-  if (/\bISS\b|ZARYA/.test(name)) return 100;
-  if (/HUBBLE/.test(name)) return 96;
-  if (/\bTESS\b/.test(name)) return 93;
-  if (/\bAQUA\b/.test(name)) return 90;
-  if (/\bTERRA\b/.test(name)) return 89;
-  if (/\bSUOMI\b|\bNPP\b/.test(name)) return 87;
-  if (/LANDSAT/.test(name)) return 86;
-  if (/SENTINEL/.test(name)) return 84;
-  if (/NOAA|METOP|HIMAWARI|GOES|GPS|GLONASS|GALILEO|BEIDOU|IRIDIUM/.test(name)) return 80;
-  if (/STARLINK|ONEWEB/.test(name)) return 40;
-  if (/COSMOS|COSMOS-/.test(name)) return 55;
-  return 60;
-}
-
-const ID_BUMPS = new Map([
-  [25544, 15],
-  [20580, 10],
-  [43013,  8],
-  [25994,  6],
-  [27424,  6],
-  [39444,  5],
-]);
-
-async function fetchMetaFor(ids) {
-  try {
-    const res = await fetchJSON(API("/tle/meta"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids })
-    });
-    const map = new Map();
-    (res?.items || []).forEach(it => map.set(Number(it.noradId), it.name || null));
-    return map;
-  } catch {
-    return new Map();
-  }
-}
-
-async function rankIds(ids) {
-  const nameById = await fetchMetaFor(ids);
-  const scored = ids.map(id => {
-    const nm = nameById.get(id);
-    let s = nm ? scoreName(nm) : 60;
-    if (ID_BUMPS.has(id)) s += ID_BUMPS.get(id);
-    return { id, score: s };
-  });
-  const indexOf = new Map(ids.map((v, i) => [v, i]));
-  scored.sort((a, b) => (b.score - a.score) || (indexOf.get(a.id) - indexOf.get(b.id)));
-  return scored.map(x => x.id);
-}
-
-function groupsFrom(sortedIds) {
-  return {
-    top10: sortedIds.slice(0, 10),
-    top25: sortedIds.slice(0, 25),
-    top50: sortedIds.slice(0, 50),
-    all:   sortedIds.slice(),
-  };
-}
-
-/* ----------------------- three.js globe ----------------------- */
+// three.js globe (simulation + animation)
 let THREE_SCENE = null;
 let MERIDIAN_OFFSET_DEG = 90;
 let LAT_OFFSET_DEG = 0;
@@ -913,7 +791,7 @@ function initGlobe() {
   animate();
 }
 
-/* ----------------------- draw orbits ----------------------- */
+// draw orbits
 function drawOrbit(sim) {
   if (!THREE_SCENE) initGlobe();
   const { pathGroup, sat, R } = THREE_SCENE;
@@ -974,12 +852,10 @@ function clearAllOrbits() {
   setStatus("Cleared satellites.");
 }
 
-
 function clearSingleSimulation() {
   if (!THREE_SCENE) return;
   const { pathGroup } = THREE_SCENE;
 
-  // remove single-sim line(s), keep multi-sim spheres
   const toRemove = [];
   pathGroup.children.forEach(obj => { if (obj.isLine) toRemove.push(obj); });
   toRemove.forEach(obj => {
@@ -996,8 +872,6 @@ function clearSingleSimulation() {
 
   setStatus("Cleared single-satellite simulation.");
 }
-
-
 
 function colorForIndex(i, total) {
   const hue = (i / Math.max(1, total)) * 360;
@@ -1051,7 +925,149 @@ function drawOrbits(simResults) {
   setStatus(`Plotted ${THREE_SCENE.paths.length} satellites (markers only, 84000s @ 60s).`);
 }
 
-/* ----------------------- multi-sim batching ----------------------- */
+// simulation
+function getSimSatId() {
+  const simId  = $("#sim-satid")?.value?.trim();
+  const dashId = $("#satid")?.value?.trim();
+  return simId || dashId || "";
+}
+
+async function callSimulateQuick(satid, durationSec = 600, stepSec = 1) {
+  try {
+    if (!satid) throw new Error("satid is required (fill Simulation or Dashboard Satellite field)");
+    setStatus(`Simulating ${durationSec}s @${stepSec}s for ${satid} …`);
+    const data = await fetchJSON(API(`/simulate?db=1`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ satid, durationSec, stepSec })
+    });
+    show(data);
+    if (data?.points?.length) drawOrbit(data);
+    setStatus("Done");
+  } catch (e) {
+    setStatus(e.message);
+    show({ error: e.message });
+  }
+}
+
+async function onSimulateClick() {
+  const satid       = getSimSatId();
+  const durationSec = Number($("#sim-duration")?.value || 600);
+  const stepSec     = Number($("#sim-step")?.value || 1);
+  await callSimulateQuick(satid, durationSec, stepSec);
+}
+
+function toISO(ts) {
+  const n = Number(ts);
+  return new Date(n < 1e12 ? n * 1000 : n).toISOString();
+}
+
+// dashboard --> get current position (quick start)
+
+async function runCurrentPositionFromNoradSlot() {
+  const satid = $("#satid")?.value?.trim();
+  if (!satid) { setStatus("Enter a NORAD ID in the NORAD slot first."); show({ error: "Missing NORAD ID (#satid)" }); return; }
+
+  try {
+    setStatus(`Getting current position for NORAD ${satid} …`);
+    try { await ensureFresh([Number(satid)], 12); } catch {}
+
+    const data = await fetchJSON(API(`/simulate?db=1`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ satid, durationSec: 2, stepSec: 1 }),
+    });
+
+    const pts = Array.isArray(data?.points) ? data.points : [];
+    const last = pts[pts.length - 1];
+    if (!last) throw new Error("No position returned");
+
+    const iso = toISO(last.t);
+    show({
+      satid: String(satid),
+      name: data?.name || `NORAD ${satid}`,
+      time: iso,
+      lla: {
+        lat_deg: Number(last.lla.lat).toFixed(5),
+        lon_deg: Number(last.lla.lon).toFixed(5),
+        alt_km:  Number(last.lla.alt).toFixed(3),
+      },
+    });
+
+    if (pts.length >= 2) drawOrbit(data);
+    setStatus(`Current position for NORAD ${satid} at ${iso}`);
+  } catch (e) {
+    setStatus(e.message || "Failed to get current position");
+    show({ error: e.message || "Failed" });
+  }
+}
+
+
+
+// wanted to build functionality that allowed the most popular satellites to be deployed onto globe first
+function scoreName(nameRaw) {
+  const name = String(nameRaw || "").toUpperCase();
+  if (/\bISS\b|ZARYA/.test(name)) return 100;
+  if (/HUBBLE/.test(name)) return 96;
+  if (/\bTESS\b/.test(name)) return 93;
+  if (/\bAQUA\b/.test(name)) return 90;
+  if (/\bTERRA\b/.test(name)) return 89;
+  if (/\bSUOMI\b|\bNPP\b/.test(name)) return 87;
+  if (/LANDSAT/.test(name)) return 86;
+  if (/SENTINEL/.test(name)) return 84;
+  if (/NOAA|METOP|HIMAWARI|GOES|GPS|GLONASS|GALILEO|BEIDOU|IRIDIUM/.test(name)) return 80;
+  if (/STARLINK|ONEWEB/.test(name)) return 40;
+  if (/COSMOS|COSMOS-/.test(name)) return 55;
+  return 60;
+}
+
+const ID_BUMPS = new Map([
+  [25544, 15],
+  [20580, 10],
+  [43013,  8],
+  [25994,  6],
+  [27424,  6],
+  [39444,  5],
+]);
+
+async function fetchMetaFor(ids) {
+  try {
+    const res = await fetchJSON(API("/tle/meta"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
+    const map = new Map();
+    (res?.items || []).forEach(it => map.set(Number(it.noradId), it.name || null));
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+async function rankIds(ids) {
+  const nameById = await fetchMetaFor(ids);
+  const scored = ids.map(id => {
+    const nm = nameById.get(id);
+    let s = nm ? scoreName(nm) : 60;
+    if (ID_BUMPS.has(id)) s += ID_BUMPS.get(id);
+    return { id, score: s };
+  });
+  const indexOf = new Map(ids.map((v, i) => [v, i]));
+  scored.sort((a, b) => (b.score - a.score) || (indexOf.get(a.id) - indexOf.get(b.id)));
+  return scored.map(x => x.id);
+}
+
+function groupsFrom(sortedIds) {
+  return {
+    top10: sortedIds.slice(0, 10),
+    top25: sortedIds.slice(0, 25),
+    top50: sortedIds.slice(0, 50),
+    all:   sortedIds.slice(),
+  };
+}
+
+// Simulation for fleet (multi-sim)
 function pLimitLocal(concurrency = 4) {
   let active = 0;
   const q = [];
@@ -1096,7 +1112,7 @@ async function simulateManyDb(ids, durationSec, stepSec) {
   return { count: results.length, results };
 }
 
-/* ----------------------- fleet controls ----------------------- */
+// fleet controls
 const USER_NORAD_IDS = Array.from(new Set(String(
   "25544,59588,57800,54149,52794,48865,48274,46265,43682,43641,43521,42758,41337,41038,39766,39679,39358,38341,37731,33504,31793,31792,31789,31598,31114,29507,29228,28932,28931,28738,28499,28480,28415,28353,28222,28059,27601,27597,27432,27424,27422,27386,26474,26070,25994,25977,25876,25861,25860,25732,25407,25400,24883,24298,23705,23561,23405,23343,23088,23087,22830,22803,22626,22566,22286,22285,22236,22220,22219,21949,21938,21876,21819,21610,21574,21423,21422,21397,21088,20775,20666,20663,20625,20580,20511,20466,20465,20453,20443,20323,20262,20261,19650,19574,19573,19257,19210,19120,19046,18958,18749,18421,18187,18153,17973,17912,17590,17589,17567,17295,16908,16882,16792,16719,16496,16182,15945,15772,15483,14820,14699,14208,14032,13819,13553,13403,13154,13068,12904,12585,12465,12139,11672,11574,11267,10967,10114,8459,6155,6153,5730,5560,5118,4327,3669,3597,3230,2802,877,733,694,43013,39444"
 ).split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0)));
@@ -1138,7 +1154,8 @@ async function onDrawPopularClick() {
   }
 }
 
-/* ----------------------- boot ----------------------- */
+
+// Bootstrap
 document.addEventListener("DOMContentLoaded", async () => {
 
   setAccessToken("");
@@ -1159,7 +1176,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderSidebar();
   initGlobe();
 
-  // after paint, ask server to refresh only the stale ones
   setTimeout(async () => {
     try {
       const STALE_MAX = 200;
@@ -1170,17 +1186,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       const byId = new Map((batch?.items || []).map(i => [Number(i.noradId), i]));
       if (!byId.size) return;
 
-    ALL_SATS = ALL_SATS.map(s => {
-      const hit = byId.get(s.id);
-      return hit ? {
-        id: s.id,
-        name: hit.name || s.name,
-        updatedAt: hit.updatedAt ?? s.updatedAt ?? null,
-        epoch: hit.epoch,
-        source: hit.source,
-        stale: !!hit.stale
-      } : s;
-    });
+      ALL_SATS = ALL_SATS.map(s => {
+        const hit = byId.get(s.id);
+        return hit ? {
+          id: s.id,
+          name: hit.name || s.name,
+          updatedAt: hit.updatedAt ?? s.updatedAt ?? null,
+          epoch: hit.epoch,
+          source: hit.source,
+          stale: !!hit.stale
+        } : s;
+      });
       FILTERED_SATS = ALL_SATS.slice();
       renderSidebar();
       setStatus("Satellite data updated.");
@@ -1209,20 +1225,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   on("#btn-clear-fleet", "click", clearAllOrbits);
 
   // dashboard helpers
-  on("#btn-dry-run", "click", () => {
-    const satid = $("#satid")?.value?.trim() || "";
-    const lat   = $("#lat")?.value?.trim() || "";
-    const lon   = $("#lon")?.value?.trim() || "";
-    const alt   = $("#alt")?.value?.trim() || "";
-    setStatus("Inputs captured.");
-    show({ satid, observer: { lat, lon, alt } });
-  });
+  // dashboard: run current position
+  on("#btn-run", "click", runCurrentPositionFromNoradSlot);
+
   on("#btn-clear", "click", () => {
     clearSingleSimulation();    
     setStatus("Idle");
     show("// output will appear here");
   });
-
 
   // auth
   const emailEl = $("#auth-email");
@@ -1237,6 +1247,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await login(email, password);
       await loadFavourites();
       setStatus("Logged in.");
+
     } catch (e) {
       setStatus(e.message);
       show({ error: e.message });
@@ -1273,6 +1284,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     setUserLabel('');
     setStatus("Logged out.");
   });
-
 
 });

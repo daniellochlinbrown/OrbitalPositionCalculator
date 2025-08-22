@@ -33,7 +33,10 @@
 
     <header class="topbar">
         <div class="brand">
-            <div class="badge">OT</div>
+            <div class="badge" title="Orbital Tracker">
+                <img src="./logo/OTlogo.png" alt="Orbital Tracker logo" class="badge-img" width="32" height="32">
+            </div>
+
             <div class="titles">
                 <h1>Satellite Orbit Tracker</h1>
                 <span class="subtitle">Aerospace Ops Console</span>
@@ -68,27 +71,15 @@
             <div class="grid">
                 <div class="card">
                     <h2>Quick Start</h2>
-                    <p>Pick a satellite and enter your observer location.</p>
+                    <p>Pick a satellite.</p>
                     <div class="row">
                         <div class="field">
                             <label>Satellite NORAD ID</label>
                             <input id="satid" placeholder="e.g. 25544 (ISS)" value="25544" />
                         </div>
-                        <div class="field">
-                            <label>Observer Lat</label>
-                            <input id="lat" placeholder="-27.47" value="-27.47" />
-                        </div>
-                        <div class="field">
-                            <label>Observer Lon</label>
-                            <input id="lon" placeholder="153.03" value="153.03" />
-                        </div>
-                        <div class="field">
-                            <label>Observer Alt (m)</label>
-                            <input id="alt" placeholder="0" value="0" />
-                        </div>
                     </div>
                     <div class="row">
-                        <button class="primary" id="btn-dry-run">Preview Request</button>
+                        <button class="primary" id="btn-run">Request</button>
                         <button class="ghost" id="btn-clear">Clear Output</button>
                     </div>
                 </div>
@@ -96,7 +87,7 @@
                 <div class="card">
                     <h2>Status</h2>
                     <div id="status" class="status">Idle</div>
-                    <pre id="out" class="out">// output will appear here</pre>
+                    <pre id="out" class="out">Request a Satellite</pre>
                 </div>
             </div>
         </section>
@@ -168,9 +159,7 @@
     </main>
 
     <footer class="foot">
-        <span>© Orbital Tracker</span>
-        <span class="dot"></span>
-        <span class="muted">Prototype UI</span>
+        <span>Satellite Orbital Tracker</span>
     </footer>
 
     <script src="./app.js"></script>

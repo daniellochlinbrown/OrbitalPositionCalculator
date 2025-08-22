@@ -26,7 +26,7 @@ function requireAuth(req, res, next) {
   catch { res.status(401).json({ error: 'Invalid/expired token' }); }
 }
 
-// --- REGISTER ---
+// Register
 router.post('/register', express.json(), async (req, res) => {
   try {
     const email = (req.body?.email || '').trim().toLowerCase();
@@ -49,7 +49,7 @@ router.post('/register', express.json(), async (req, res) => {
   }
 });
 
-// --- LOGIN (DB) ---
+// Login (DB)
 router.post('/login', express.json(), async (req, res) => {
   const email = (req.body?.email || '').trim().toLowerCase();
   const password = req.body?.password || '';
@@ -63,7 +63,7 @@ router.post('/login', express.json(), async (req, res) => {
   res.json({ accessToken: signAT(payload), user: { id: user.id, email: user.email, roles: user.roles } });
 });
 
-// --- REFRESH ---
+// Refresh
 router.post('/refresh', async (req, res) => {
   const rt = req.cookies?.rt;
   if (!rt) return res.status(401).json({ error: 'No refresh token' });
@@ -77,7 +77,7 @@ router.post('/refresh', async (req, res) => {
   } catch { res.status(401).json({ error: 'Invalid refresh token' }); }
 });
 
-// --- LOGOUT ---
+// Logout
 router.post('/logout', async (req, res) => {
   try {
     const rt = req.cookies?.rt;
