@@ -38,6 +38,7 @@ function resolveStartDate(startUtc) {
   return new Date();
 }
 
+// ✂️ Guardrail removed — no upper cap on steps
 function clampAndValidate(durationSec, stepSec) {
   const dur = Number(durationSec);
   const step = Number(stepSec);
@@ -46,12 +47,6 @@ function clampAndValidate(durationSec, stepSec) {
 
   const steps = Math.floor(dur / step);
   if (steps < 1) throw new Error('Too few steps (durationSec/stepSec)');
-  const MAX_STEPS = 100000; // guardrail to prevent overloading
-  if (steps > MAX_STEPS) {
-    const err = new Error(`Too many steps (${steps}); reduce durationSec or increase stepSec`);
-    err.code = 'TOO_MANY_STEPS';
-    throw err;
-  }
   return { dur, step, steps };
 }
 
@@ -130,7 +125,7 @@ exports.simulate = async (req, res) => {
     try {
       cfg = clampAndValidate(durationSec, stepSec);
     } catch (e) {
-      if (e.code === 'TOO_MANY_STEPS') return res.status(413).json({ error: e.message });
+      // No 413 path anymore since there is no max-cap
       return res.status(400).json({ error: e.message });
     }
     const { dur, step, steps } = cfg;
