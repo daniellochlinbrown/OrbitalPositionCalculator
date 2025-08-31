@@ -9,6 +9,8 @@ const prisma = new PrismaClient();
 
 const { getOrFetchTLE, getTLEFromDbOnly } = require('../utils/tleStore');
 
+
+// primary CPU Intensive Task
 function propagateLLA(satrec, date) {
   const pv = satellite.propagate(satrec, date);
   if (!pv?.position) return null;
@@ -23,7 +25,7 @@ function propagateLLA(satrec, date) {
     },
   };
 }
-const isStale = (epoch, days = 14) => !epoch || (Date.now() - new Date(epoch).getTime()) > days * 86400 * 1000;
+const isStale = (epoch, days = 1) => !epoch || (Date.now() - new Date(epoch).getTime()) > days * 86400 * 1000;
 
 // Default endpoints (may fetch if missing/stale)
 exports.getNow = async (req, res) => {

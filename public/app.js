@@ -32,31 +32,12 @@ function debounce(fn, ms = 200) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-// checks dates to see if new API call needed
-function isOlderThan(dateStr, hours = 12) {
-  if (!dateStr) return true;
-  const t = new Date(dateStr).getTime();
-  if (!Number.isFinite(t)) return true;
-  return (Date.now() - t) > hours * 3600 * 1000;
-}
 function getCurrentSearchTerm() {
   const el = $("#satSearch");
   return el ? el.value.trim() : "";
 }
 
-function sortByFavouritesThenDefault(list) {
-  return list.slice().sort((a, b) => {
-    const af = FAVS.has(a.id) ? 1 : 0;
-    const bf = FAVS.has(b.id) ? 1 : 0;
-    if (af !== bf) return bf - af;
-    const ai = a._ord ?? 0, bi = b._ord ?? 0;
-    return ai - bi;
-  });
-}
-
-
 // auth + fetch token
-
 function setAccessToken(token) {
   ACCESS_TOKEN = token || "";
 
@@ -96,6 +77,7 @@ function setUserLabel(email) {
   if (el) el.textContent = email || '—';
 }
 
+// keeps user logged in after refresh
 async function attemptAutoLogin() {
   try {
     const res = await fetch(API('/auth/refresh'), {
@@ -120,6 +102,7 @@ async function attemptAutoLogin() {
   }
 }
 
+// get celestrak data
 async function apiFetch(url, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (ACCESS_TOKEN) headers.set("Authorization", `Bearer ${ACCESS_TOKEN}`);
@@ -254,14 +237,6 @@ async function doRegister() {
 
 // satellites sidebar 
 
-const POPULAR_FALLBACK = [
-  { id: 25544, name: "ISS (ZARYA)" },
-  { id: 20580, name: "Hubble Space Telescope" },
-  { id: 25994, name: "Terra (EOS AM-1)" },
-  { id: 27424, name: "Aqua (EOS PM-1)" },
-  { id: 39444, name: "Suomi NPP" },
-];
-
 async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
   const sortFn = (typeof sortByFavouritesThenDefault === 'function')
     ? sortByFavouritesThenDefault
@@ -269,6 +244,7 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
         const ai = a._ord ?? 0, bi = b._ord ?? 0;
         return ai - bi;
       });
+
   const currentTerm = (typeof getCurrentSearchTerm === 'function')
     ? getCurrentSearchTerm()
     : ($("#satSearch")?.value?.trim() || "");
@@ -278,14 +254,12 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
     const firstItems = Array.isArray(first?.items) ? first.items : [];
 
     if (!firstItems.length) {
-      ALL_SATS = (Array.isArray(POPULAR_FALLBACK) ? POPULAR_FALLBACK : []).map((r, i) => ({
-        ...r,
-        _ord: i,
-      }));
-      FILTERED_SATS = sortFn(ALL_SATS);
-      setStatus("Showing popular satellites (no DB rows yet).");
+      ALL_SATS = [];
+      FILTERED_SATS = [];
+      setStatus("No satellites found in DB.");
       return;
     }
+
     ALL_SATS = firstItems.map((r, i) => ({
       id: Number(r.noradId),
       name: r.name || `NORAD ${r.noradId}`,
@@ -309,7 +283,7 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
                 id,
                 name: r.name || `NORAD ${id}`,
                 updatedAt: r.updatedAt || null,
-                _ord: i, 
+                _ord: i,
               };
             });
             ALL_SATS = merged;
@@ -323,15 +297,13 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
       });
     }
   } catch (e) {
-    console.warn("[/tle] failed, using fallback:", e?.message || e);
-    ALL_SATS = (Array.isArray(POPULAR_FALLBACK) ? POPULAR_FALLBACK : []).map((r, i) => ({
-      ...r,
-      _ord: i,
-    }));
-    FILTERED_SATS = sortFn(ALL_SATS);
-    setStatus("Loaded starter list (API unavailable).");
+    console.warn("[/tle] failed:", e?.message || e);
+    ALL_SATS = [];
+    FILTERED_SATS = [];
+    setStatus("API unavailable. No satellites loaded.");
   }
 }
+
 
 async function ensureFresh(ids, maxAgeHours = 12) {
   if (!ids?.length) return { items: [] };
@@ -1175,35 +1147,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   renderSidebar();
   initGlobe();
-
-  setTimeout(async () => {
-    try {
-      const STALE_MAX = 200;
-      const staleIds = ALL_SATS.filter(s => isOlderThan(s.updatedAt, 12)).slice(0, STALE_MAX).map(s => s.id);
-      if (!staleIds.length) return;
-
-      const batch = await ensureFresh(staleIds, 12);
-      const byId = new Map((batch?.items || []).map(i => [Number(i.noradId), i]));
-      if (!byId.size) return;
-
-      ALL_SATS = ALL_SATS.map(s => {
-        const hit = byId.get(s.id);
-        return hit ? {
-          id: s.id,
-          name: hit.name || s.name,
-          updatedAt: hit.updatedAt ?? s.updatedAt ?? null,
-          epoch: hit.epoch,
-          source: hit.source,
-          stale: !!hit.stale
-        } : s;
-      });
-      FILTERED_SATS = ALL_SATS.slice();
-      renderSidebar();
-      setStatus("Satellite data updated.");
-    } catch (e) {
-      console.warn("[ensureFresh] skipped:", e?.message || e);
-    }
-  }, 0);
 
   const searchEl = $("#satSearch");
   if (searchEl) {
