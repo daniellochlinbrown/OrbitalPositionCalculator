@@ -1,4 +1,3 @@
-
 # Assignment 1 - REST API Project - Response to Criteria
 ================================================
 
@@ -43,36 +42,50 @@
 
 ### REST API
 - **One line description:**  
-  Provides REST endpoints to query TLE data, propagate satellites, and manage users.  
+  Provides REST endpoints to list/query TLEs, propagate orbits (single or batch), and manage user favourites.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
   - `src/routes/index.js`  
   - `src/routes/tle.js`  
   - `src/routes/orbits.js`  
+  - `src/routes/batch.js`  
+  - `src/routes/favourites.js`  
+  - `src/controllers/tleController.js`  
+  - `src/controllers/orbitsController.js`  
+
+**Key endpoints (current):**
+- `GET /tle?limit=###` — List most-recent TLE rows from DB (ensures visual set freshness on first call).  
+- `GET /tle/:satid` — Return TLE for a specific NORAD ID from DB.  
+- `GET /now/:satid` — Current position (DB-only TLE → SGP4 propagate “now”).  
+- `POST /simulate` — Body `{ satid, startUtc?, startIso?, startTs?, durationSec, stepSec }` → returns propagated LLA time series.  
+- `POST /simulate-many` — Body `{ satids[], durationSec, stepSec }` → multi-satellite propagation (server-side concurrency).  
+- `GET /favourites` *(auth)* — List user’s favourite NORAD IDs.  
+- `POST /favourites` *(auth)* — Add/ensure favourite `{ noradId }`.  
+- `DELETE /favourites/:noradId` *(auth)* — Remove favourite.  
 
 ---
 
 ### Data types
 - **One line description:**  
-  The application uses a relational database (SQLite/Prisma) with structured tables for satellites, users, and position snapshots.  
+  The application uses a relational database (SQLite via Prisma) with structured tables for users, favourites, TLEs (satellites), and optional TLE history.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
   - `prisma/schema.prisma`  
 
 #### First kind
 - **One line description:**  
-  User account and authentication data.  
+  User Favourite Data  
 - **Type:** Relational table (`User`)  
-- **Rationale:** Stores email, password hash, roles, and refresh token versioning for authentication.  
+- **Rationale:** Stores a Users "Favourited" satellites in database  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
   - `prisma/schema.prisma`  
 
 #### Second kind
 - **One line description:**  
-  Satellite orbital element data.  
+  Satellite Two-Line Elements (TLE) for propagation.  
 - **Type:** Relational table (`Tle`)  
-- **Rationale:** Stores NORAD IDs, TLE lines, and timestamps to propagate satellite positions accurately.  
+- **Rationale:** Persists NORAD ID, TLE line1/line2, epoch, and timestamps to support accurate SGP4 propagation.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
   - `prisma/schema.prisma`  
@@ -81,22 +94,20 @@
 
 ### CPU intensive task
 - **One line description:**  
-  Propagating satellite positions from TLE data using the SGP4 algorithm for multiple satellites and timestamps.  
+  Propagating satellite positions from TLE data using the SGP4 algorithm, including batch propagation of multiple satellites.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
-  - `src/controllers/orbitsController.js` (uses `satellite.propagate`)  
-  - `src/workers/orbit-burn-worker.js`  
-  - `src/utils/orbitMath.js`  
+  - `src/controllers/orbitsController.js`  
+  - `src/routes/batch.js`  *(concurrent multi-satellite propagation)*
 
 ---
 
 ### CPU load testing
 - **One line description:**  
-  Stress testing by requesting propagation of many satellites over fine time steps to exceed 80% CPU usage for several minutes.  
+  Stress test by calling `/simulate-many` with dozens/hundreds of NORAD IDs and small `stepSec` over large `durationSec` to sustain >80% CPU.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
-  - `scripts/loadtest.sh` *(or your load testing script if separate)*  
-  - `src/routes/batch.js`  
+  - `src/routes/batch.js`
 
 ---
 
@@ -109,12 +120,20 @@
 ---
 
 ### External API(s)
-- **One line description:** Not attempted  
+- **One line description:**  
+  Integrates the CelesTrak **Visual** group feed (JSON) to refresh the local TLE database.  
+- **Video timestamp:** *(Add)*  
+- **Relevant files:**  
+  - `src/controllers/tleController.js`
 
 ---
 
 ### Additional types of data
-- **One line description:** Not attempted  
+- **One line description:**  
+  User favourites (NORAD IDs) and optional TLE history entries.  
+- **Video timestamp:** *(Add)*  
+- **Relevant files:**  
+  - `prisma/schema.prisma`  
 
 ---
 
@@ -130,7 +149,7 @@
 
 ### Web client
 - **One line description:**  
-  A static HTML/JS front-end with Montserrat-styled sidebar, satellite search, and an interactive Three.js globe to visualize orbits.  
+  A static HTML/JS front-end with a sidebar search and an interactive Three.js globe to visualize single or batch orbits.  
 - **Video timestamp:** *(Add)*  
 - **Relevant files:**  
   - `public/index.html`  
