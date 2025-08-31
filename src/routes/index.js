@@ -1,13 +1,13 @@
+// src/routes/index.js
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
 
 // Sub-routers
-const tleRouter    = require('./tle');
-const orbitsRouter = require('./orbits');
-const batchRouter  = require('./batch');
+const tleRouter        = require('./tle');
+const orbitsRouter     = require('./orbits');
+const batchRouter      = require('./batch');
 const favouritesRouter = require('./favourites');
 
-const prisma = new PrismaClient();
+const prisma = require('../db/db.js'); 
 const router = express.Router();
 
 router.use(express.json({ limit: '1mb' }));
@@ -18,13 +18,11 @@ router.use('/',    orbitsRouter);
 router.use('/',    batchRouter);
 router.use('/favourites', favouritesRouter);
 
+// Lightweight meta lookup
 router.post('/tle/meta', async (req, res) => {
   try {
     const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];
-    const ids = raw
-      .map(v => parseInt(v, 10))
-      .filter(n => Number.isFinite(n) && n > 0);
-
+    const ids = raw.map(v => parseInt(v, 10)).filter(n => Number.isFinite(n) && n > 0);
     if (!ids.length) return res.json({ items: [] });
 
     const rows = await prisma.tle.findMany({

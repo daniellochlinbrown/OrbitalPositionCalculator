@@ -1,4 +1,3 @@
-// src/app.js
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -38,9 +37,5 @@ app.get('/now/:satid', orbits.getNow);
 app.post('/simulate', orbits.simulate);
 
 app.use('/', routes);
-
-
-// Health check
-app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
 module.exports = app;

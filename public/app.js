@@ -122,6 +122,21 @@ async function apiFetch(url, opts = {}) {
   return res;
 }
 
+// ---- sort helpers ----
+function sortByFavouritesThenDefault(list) {
+  return list.slice().sort((a, b) => {
+    const af = FAVS.has(Number(a.id)) ? 0 : 1;
+    const bf = FAVS.has(Number(b.id)) ? 0 : 1;
+    if (af !== bf) return af - bf;               // favourites first
+    const an = (a.name || "").toUpperCase();
+    const bn = (b.name || "").toUpperCase();
+    if (an && bn && an !== bn) return an.localeCompare(bn); // then by name
+    const ao = a._ord ?? 0, bo = b._ord ?? 0;
+    return ao - bo;                               // finally original order
+  });
+}
+
+
 async function fetchJSON(url, opts) {
   const res = await apiFetch(url, opts);
   let data = null;
@@ -238,13 +253,8 @@ async function doRegister() {
 // satellites sidebar 
 
 async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
-  const sortFn = (typeof sortByFavouritesThenDefault === 'function')
-    ? sortByFavouritesThenDefault
-    : (list) => list.slice().sort((a, b) => {
-        const ai = a._ord ?? 0, bi = b._ord ?? 0;
-        return ai - bi;
-      });
-
+  const sortFn = sortByFavouritesThenDefault;
+  
   const currentTerm = (typeof getCurrentSearchTerm === 'function')
     ? getCurrentSearchTerm()
     : ($("#satSearch")?.value?.trim() || "");
@@ -302,18 +312,6 @@ async function fetchAllSatellites(initialLimit = 150, finalLimit = 500) {
     FILTERED_SATS = [];
     setStatus("API unavailable. No satellites loaded.");
   }
-}
-
-
-async function ensureFresh(ids, maxAgeHours = 12) {
-  if (!ids?.length) return { items: [] };
-  const payload = { ids, maxAgeHours, refreshStale: true, dbOnly: true }; 
-
-  return await fetchJSON('/tle/ensure', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
 }
 
 function applySearchFilter(q) {
@@ -942,7 +940,6 @@ async function runCurrentPositionFromNoradSlot() {
 
   try {
     setStatus(`Getting current position for NORAD ${satid} …`);
-    try { await ensureFresh([Number(satid)], 12); } catch {}
 
     const data = await fetchJSON(API(`/simulate?db=1`), {
       method: "POST",
@@ -976,69 +973,6 @@ async function runCurrentPositionFromNoradSlot() {
 
 
 
-// wanted to build functionality that allowed the most popular satellites to be deployed onto globe first
-function scoreName(nameRaw) {
-  const name = String(nameRaw || "").toUpperCase();
-  if (/\bISS\b|ZARYA/.test(name)) return 100;
-  if (/HUBBLE/.test(name)) return 96;
-  if (/\bTESS\b/.test(name)) return 93;
-  if (/\bAQUA\b/.test(name)) return 90;
-  if (/\bTERRA\b/.test(name)) return 89;
-  if (/\bSUOMI\b|\bNPP\b/.test(name)) return 87;
-  if (/LANDSAT/.test(name)) return 86;
-  if (/SENTINEL/.test(name)) return 84;
-  if (/NOAA|METOP|HIMAWARI|GOES|GPS|GLONASS|GALILEO|BEIDOU|IRIDIUM/.test(name)) return 80;
-  if (/STARLINK|ONEWEB/.test(name)) return 40;
-  if (/COSMOS|COSMOS-/.test(name)) return 55;
-  return 60;
-}
-
-const ID_BUMPS = new Map([
-  [25544, 15],
-  [20580, 10],
-  [43013,  8],
-  [25994,  6],
-  [27424,  6],
-  [39444,  5],
-]);
-
-async function fetchMetaFor(ids) {
-  try {
-    const res = await fetchJSON(API("/tle/meta"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids })
-    });
-    const map = new Map();
-    (res?.items || []).forEach(it => map.set(Number(it.noradId), it.name || null));
-    return map;
-  } catch {
-    return new Map();
-  }
-}
-
-async function rankIds(ids) {
-  const nameById = await fetchMetaFor(ids);
-  const scored = ids.map(id => {
-    const nm = nameById.get(id);
-    let s = nm ? scoreName(nm) : 60;
-    if (ID_BUMPS.has(id)) s += ID_BUMPS.get(id);
-    return { id, score: s };
-  });
-  const indexOf = new Map(ids.map((v, i) => [v, i]));
-  scored.sort((a, b) => (b.score - a.score) || (indexOf.get(a.id) - indexOf.get(b.id)));
-  return scored.map(x => x.id);
-}
-
-function groupsFrom(sortedIds) {
-  return {
-    top10: sortedIds.slice(0, 10),
-    top25: sortedIds.slice(0, 25),
-    top50: sortedIds.slice(0, 50),
-    all:   sortedIds.slice(),
-  };
-}
-
 // Simulation for fleet (multi-sim)
 function pLimitLocal(concurrency = 4) {
   let active = 0;
@@ -1057,7 +991,7 @@ function pLimitLocal(concurrency = 4) {
 
 async function simulateManyDb(ids, durationSec, stepSec) {
   try {
-    const res = await fetchJSON(API(`/simulate-many?db=1`), {
+    const res = await fetchJSON(API(`/simulate-many`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ satids: ids, durationSec, stepSec }),
@@ -1089,42 +1023,47 @@ const USER_NORAD_IDS = Array.from(new Set(String(
   "25544,59588,57800,54149,52794,48865,48274,46265,43682,43641,43521,42758,41337,41038,39766,39679,39358,38341,37731,33504,31793,31792,31789,31598,31114,29507,29228,28932,28931,28738,28499,28480,28415,28353,28222,28059,27601,27597,27432,27424,27422,27386,26474,26070,25994,25977,25876,25861,25860,25732,25407,25400,24883,24298,23705,23561,23405,23343,23088,23087,22830,22803,22626,22566,22286,22285,22236,22220,22219,21949,21938,21876,21819,21610,21574,21423,21422,21397,21088,20775,20666,20663,20625,20580,20511,20466,20465,20453,20443,20323,20262,20261,19650,19574,19573,19257,19210,19120,19046,18958,18749,18421,18187,18153,17973,17912,17590,17589,17567,17295,16908,16882,16792,16719,16496,16182,15945,15772,15483,14820,14699,14208,14032,13819,13553,13403,13154,13068,12904,12585,12465,12139,11672,11574,11267,10967,10114,8459,6155,6153,5730,5560,5118,4327,3669,3597,3230,2802,877,733,694,43013,39444"
 ).split(",").map(s => parseInt(s.trim(), 10)).filter(n => Number.isFinite(n) && n > 0)));
 
-const POP_DURATION_SEC = 84000;
-const POP_STEP_SEC = 60;
+// --- Brightest (visual) fleet controls ---
+const BRIGHTEST_DURATION_SEC = 84000;
+const BRIGHTEST_STEP_SEC = 60;
 
 function selectedGroupName() {
-  const el = $("#fleet-size") || $("#popular-count");
+  // prefer #fleet-size; fall back to #brightest-count
+  const el = $("#fleet-size") || $("#brightest-count");
   return el ? el.value : "25";
 }
 
-async function onDrawPopularClick() {
+
+async function onDrawBrightestClick() {
   try {
     initGlobe();
-    setStatus("Ranking satellites by interest…");
-    const ranked = await rankIds(USER_NORAD_IDS);
-    const groups = groupsFrom(ranked);
-    const which  = selectedGroupName();
-    const ids    = which === "10" ? groups.top10
-                 : which === "25" ? groups.top25
-                 : which === "50" ? groups.top50
-                 : groups.all;
+    setStatus("Preparing brightest satellites (visual set)…");
 
-    if (!ids.length) throw new Error("No satellites in selected group.");
+    // How many to deploy
+    const which = selectedGroupName();
+    const count = which === "10" ? 10
+               : which === "25" ? 25
+               : which === "50" ? 50
+               : USER_NORAD_IDS.length;
 
-    setStatus(`Simulating ${ids.length} satellites for ${POP_DURATION_SEC}s @ ${POP_STEP_SEC}s (DB-only)…`);
-    const res  = await simulateManyDb(ids, POP_DURATION_SEC, POP_STEP_SEC);
+    // Just take the first N from your curated list (already tuned for 'visual/bright')
+    const ids = USER_NORAD_IDS.slice(0, count);
+
+    setStatus(`Simulating ${ids.length} brightest sats for ${BRIGHTEST_DURATION_SEC}s @ ${BRIGHTEST_STEP_SEC}s (DB-only)…`);
+    const res  = await simulateManyDb(ids, BRIGHTEST_DURATION_SEC, BRIGHTEST_STEP_SEC);
     const list = res?.results || [];
     const ok   = list.filter(x => !x.error && x.points?.length);
-    const bad  = list.filter(x => x.error);
+    const bad  = list.filter(x => x.error).map(x => x.satid);
 
     drawOrbits(ok);
-    show({ group: which, requested: ids.length, success: ok.length, failed: bad.length, failedIds: bad.map(x => x.satid) });
+    show({ group: which, requested: ids.length, success: ok.length, failed: bad.length, failedIds: bad });
     setStatus(`Done. Plotted ${ok.length}/${ids.length}.`);
   } catch (e) {
     setStatus(e.message);
     show({ error: e.message });
   }
 }
+
 
 
 // Bootstrap
@@ -1164,7 +1103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   on("#btn-simulate", "click", onSimulateClick);
 
   // fleet controls
-  on("#btn-deploy-fleet", "click", onDrawPopularClick);
+  on("#btn-deploy-fleet", "click", onDrawBrightestClick);
   on("#btn-clear-fleet", "click", clearAllOrbits);
 
   // dashboard helpers

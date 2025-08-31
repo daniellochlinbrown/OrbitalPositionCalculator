@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
+const { ensureVisualFreshness } = require('../controllers/tleController');
+
 function pLimitLocal(concurrency = 4) {
   let active = 0;
   const q = [];
@@ -19,8 +21,20 @@ function pLimitLocal(concurrency = 4) {
 router.post('/simulate-many', async (req, res) => {
   try {
     const { satids, durationSec = 84000, stepSec = 60 } = req.body || {};
-    const ids = (Array.isArray(satids) ? satids : []).map(String).filter(Boolean);
-    if (!ids.length) return res.status(400).json({ error: 'satids (array) is required' });
+    const ids = (Array.isArray(satids) ? satids : [])
+      .map(v => String(v).trim())
+      .filter(Boolean);
+
+    if (!ids.length) {
+      return res.status(400).json({ error: 'satids (array) is required' });
+    }
+    const refreshIfStale = req.query.refreshIfStale === '1';
+    const force = req.query.force === '1';
+
+    let refresh = null;
+    if (refreshIfStale || force) {
+      refresh = await ensureVisualFreshness({ force });
+    }
 
     const base = `${req.protocol}://${req.get('host')}`;
     const limit = pLimitLocal(4);
@@ -42,7 +56,7 @@ router.post('/simulate-many', async (req, res) => {
       }
     })));
 
-    res.json({ count: results.length, results });
+    res.json({ refresh: refresh || undefined, count: results.length, results });
   } catch (e) {
     console.error('[simulate-many] fatal', e);
     res.status(500).json({ error: 'internal error' });
