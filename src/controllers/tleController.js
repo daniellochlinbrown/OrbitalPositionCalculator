@@ -68,12 +68,6 @@ async function refreshTLERoute(req, res) {
   }
 }
 
-/**
- * POST /tle/ensure
- * Body: { ids: number[], maxAgeHours?: number }
- * For each id: fetch from DB if fresh; otherwise refresh from CelesTrak and upsert.
- * Returns: { items: [{ noradId, name, epoch, source, stale }] }
- */
 async function ensureManyTLERoute(req, res) {
   try {
     const raw = Array.isArray(req.body?.ids) ? req.body.ids : [];

@@ -1,4 +1,3 @@
-// scripts/fetch-norad-ids.js
 const https = require('https');
 const { parse } = require('csv-parse');
 
